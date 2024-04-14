@@ -9,12 +9,13 @@
 //  Modified by:  ~MHz (a.k.a. Tod Wulff)
 //  Data:         13-14 Apr 2024
 //  Description:  Adapted for use with a Seeed Studio XIAO nRF52840 Sense
-//                Added 128x32 i2c oled display for pitch/roll (fpv use)
+//                Added 128x32 i2c oled display for pitch/roll (FPV use)
 //                Added LEDs for driver visual queue of approaching tip over
 //                Added switched output for driving an aural warning device
+//                See video:  https://youtu.be/2NaQaHJ9XEI
 //
 //  Inspiration/References:
-//  Scale Built RC's Roll-o-Meter
+//  Scale Built RC's Roll-o-Meter - Thanks brother!
 //  https://wiki.seeedstudio.com/XIAO-BLE-Sense-IMU-Usage/
 //  https://github.com/camerontech/inclinometer
 //  https://forum.seeedstudio.com/t/xiao-sense-accelerometer-examples-and-low-power/270801
@@ -22,7 +23,7 @@
 //  https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino  <-- this
 //  + a bunch of others for the oled display (using u8g2 lib)
 //
-//  14Apr24 Sketh Stats on Xiao nRF52840 Sense Target: 
+//  14Apr24 Sketch Stats on Xiao nRF52840 Sense Target: 
 //  Sketch uses 70664 bytes (8%) of program storage space. Maximum is 811008 bytes.
 //  Global variables use 8412 bytes (3%) of dynamic memory, leaving 229156 bytes for 
 //  local variables. Maximum is 237568 bytes.
@@ -37,7 +38,7 @@
 //    - High resolution color UI on appropriate glass 
 //      (see https://www.facebook.com/scalebuilt/videos/605197420078915)
 //
-//	by www.seeedstudio.com
+//  by www.seeedstudio.com
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
