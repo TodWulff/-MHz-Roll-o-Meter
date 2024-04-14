@@ -14,6 +14,7 @@
 //                Added switched output for driving an aural warning device
 //
 //  Inspiration/References:
+//  Scale Built RC's Roll-o-Meter
 //  https://wiki.seeedstudio.com/XIAO-BLE-Sense-IMU-Usage/
 //  https://github.com/camerontech/inclinometer
 //  https://forum.seeedstudio.com/t/xiao-sense-accelerometer-examples-and-low-power/270801
@@ -27,12 +28,14 @@
 //  local variables. Maximum is 237568 bytes.
 //
 //  Possible enhancements to consider:
-//    - 
-//    - Flashing LEDs in cauton and/or warning contexts
+//    - Add cute startup splash screen
+//    - Flashing LEDs in caution and/or warning contexts
 //    - Pulsing Aural Warnings (vs. static tone) in caution and/or warning contexts
 //    - Graphics depicting truck and angle indicators (see https://www.youtube.com/watch?v=PfeZpKERkO8)
 //    - Flashing Display graphics or tossing a warning display on the oled
 //      (see https://www.facebook.com/watch/?v=2394412913939607)
+//    - High resolution color UI on appropriate glass 
+//      (see https://www.facebook.com/scalebuilt/videos/605197420078915)
 //
 //	by www.seeedstudio.com
 //
