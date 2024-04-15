@@ -119,16 +119,10 @@ const int rTipLtAngWarn = -45;
 
 //setup app
 void setup(void) {
-    Serial.begin(9600);
-    while (!Serial);  // stall until debug serial connectivity instantiated 
 
-    //Call .begin() to configure the IMUs & show debug in serial console
-    if (myIMU.begin() != 0) {
-        Serial.println("IMU Device error");
-    } else {
-        Serial.println("IMU Device OK!");
-    }
-    delay(2000);   // stall 2 sec for user observance
+    // start oled driver
+    u8g2.begin();
+    showSplash(); // has own delay
 
     // setup IO states, enabling each after being set
     digitalWrite(gLed,led_Off);
@@ -143,9 +137,8 @@ void setup(void) {
     digitalWrite(wHorn,wHorn_Off);
     pinMode(wHorn , OUTPUT);
 
-    // start oled driver
-    u8g2.begin();
-    showSplash(); // has own delay
+    startIMU();
+
 }
 
 void loop() {
@@ -205,100 +198,99 @@ void loop() {
 }
 
 void showSplash() {
-  u8g2.clearBuffer();					// clear the internal memory
-  u8g2.setFont(u8g2_font_busdisplay11x5_te);  // choose a suitable font at https://github.com/olikraus/u8g2/wiki/fntlistall
-  u8g2.drawStr(1,15,"     ~MHz");	// write something to the internal memory
-  u8g2.drawStr(1,30,"  Roll-o-Meter");	// write something to the internal memory
-  u8g2.sendBuffer();					// transfer internal memory to the display
-  delay(3000);
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_busdisplay11x5_te);
+  u8g2.drawStr(1,15,"     ~MHz");
+  u8g2.drawStr(1,30,"  Roll-o-Meter");
+  u8g2.sendBuffer();
+  delay(1500);
+
+}
+
+void startIMU() {
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_10x20_te);
+
+  //Call .begin() to configure the IMUs & show status on oled
+  if (myIMU.begin() != 0) {
+
+    u8g2.drawStr(labelX,labelY,"IMU BORKED");
+    u8g2.sendBuffer();
+
+    digitalWrite(gLed,led_Off);
+    digitalWrite(oLed,led_On);
+    digitalWrite(rLed,led_On);
+    digitalWrite(wHorn,wHorn_On);
+
+    delay(15000);  // delay an annoingly long time
+
+  } else {
+
+    u8g2.drawStr(labelX,labelY,"IMU OK");
+    u8g2.sendBuffer();
+
+    digitalWrite(gLed,led_On);
+    digitalWrite(oLed,led_Off);
+    digitalWrite(rLed,led_Off);
+    digitalWrite(wHorn,wHorn_Off);
+
+    delay(3000);
+
+  }
+
 }
 
 void showAttitude(int pitch, int roll) {
 
-  // clear attitude caution and warning flags
+  // clear attitude caution and warning flags on each iteration
+
   int pCaut = 0;
   int pWarn = 0;
   int rCaut = 0;
   int rWarn = 0;
 
   // check pitch attitude and set caution and warning flags
-  if (pitch >= 0) {                           // pitched up
-      if (pitch >= pTipFwdAngWarn) {
-        pCaut = 0;
-        pWarn = 1;
-      } else if (pitch >= pTipFwdAngCaut) {
-        pCaut = 1;
-        pWarn = 0;
-      } else {
-        pCaut = 0;
-        pWarn = 0;
-      }
-    } else {                                  // pitched down
-      if (pitch <= pTipAftAngWarn) {
-        pCaut = 0;
-        pWarn = 1;
-      } else if (pitch <= pTipAftAngCaut) {
-        pCaut = 1;
-        pWarn = 0;
-      } else {
-        pCaut = 0;
-        pWarn = 0;
-      }
-    }
+  if (pitch >= pTipFwdAngWarn || pitch <= pTipAftAngWarn) {
+    pWarn = 1;
+  } else if (pitch >= pTipFwdAngCaut || pitch <= pTipAftAngCaut) {
+    pCaut = 1;
+  } 
 
   // check roll attitude and set caution and warning flags 
-    if (roll >= 0) {                           // rolled right
-      if (roll >= rTipRtAngWarn) {
-        rCaut = 0;
-        rWarn = 1;
-      } else if (roll >= rTipRtAngCaut) {
-        rCaut = 1;
-        rWarn = 0;
-      } else {
-        rCaut = 0;
-        rWarn = 0;
-      }
-    } else {                                  // pitched left
-      if (roll <= rTipLtAngWarn) {
-        rCaut = 0;
-        rWarn = 1;
-      } else if (roll <= rTipLtAngCaut) {
-        rCaut = 1;
-        rWarn = 0;
-      } else {
-        rCaut = 0;
-        rWarn = 0;
-      }
-    }
+  if (roll >= rTipRtAngWarn || roll <= rTipLtAngWarn) {
+    rWarn = 1;
+  } else if (roll >= rTipRtAngCaut || roll <= rTipLtAngCaut) {
+    rCaut = 1;
+  } 
 
   // set led and horn based on sensed and set warning/caution flags
   if (pWarn == 1 || rWarn == 1) {
+
     digitalWrite(gLed,led_Off);
     digitalWrite(oLed,led_Off);
     digitalWrite(rLed,led_On);
     digitalWrite(wHorn,wHorn_On);
+
   } else if (pCaut == 1 || rCaut == 1) {
+
     digitalWrite(gLed,led_Off);
     digitalWrite(oLed,led_On);
     digitalWrite(rLed,led_Off);
     digitalWrite(wHorn,wHorn_Off);
+
   } else {  // (pWarn == 0 && rWarn == 0)
+
     digitalWrite(gLed,led_On);
     digitalWrite(oLed,led_Off);
     digitalWrite(rLed,led_Off);
     digitalWrite(wHorn,wHorn_Off);
+
   }
 
-  // show debug in serial console
-//  String consoleMsg = "\nP: " + String(pitch) + "°   R: " + String(roll) + "°\n";
-//  Serial.print(consoleMsg);
-  
   u8g2.clearBuffer();					// clear the internal memory
-
-  // set font
-//  u8g2.setFont(u8g2_font_busdisplay11x5_te);  // choose a suitable font at https://github.com/olikraus/u8g2/wiki/fntlistall
-//  u8g2.setFont(u8g2_font_chargen_92_te);  // choose a suitable font at https://github.com/olikraus/u8g2/wiki/fntlistall
-  u8g2.setFont(u8g2_font_10x20_te);  // choose a suitable font at https://github.com/olikraus/u8g2/wiki/fntlistall
+  u8g2.setFont(u8g2_font_10x20_te);   // 10w x 20h A=13
 
   //draw labels and populate data passed
   u8g2.drawStr(labelX,labelY,"P     R");
