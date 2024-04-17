@@ -590,7 +590,7 @@
       } 
 
     // set led and horn based on sensed and set warning/caution flags
-    if (!pWarn && !pCaut && !rWarn && !rCaut) {
+    if (!pWarn && !pCaut && !rWarn && !rCaut) {  // Good attitude...
       // annunciate non-Warning/non-Caution
       _gLedOn;
       _oLedOff;
@@ -602,26 +602,47 @@
       sprintf (strg, "Good Attitude (%1.0fHz)", loopRate);
       strcpy(statusStr, strg);
       }
-
+    //
     if (pWarn || rWarn ) {
-
       // annunciate Warning
-      _gLedOff;
-      _oLedOff;
-      _rLedOn;
-      _wHornOn;
-
-      if (pWarn && rWarn) {
+      if (pWarn && rWarn) {   // pWarn and rWarn
+        _gLedOff;
+        _oLedOff;
+        _rLedOn;
+        _wHornOn;
         strcpy(statusStr, "W: Pitch/Roll");
-        } else if (pWarn) {
-        strcpy(statusStr, "W: Pitch");
-        } else {  // rWarn
-        strcpy(statusStr, "W: Roll");
+      } else if (pWarn) {     // pWarn, see if rCaut exists
+          if (rCaut) {        // yes, pWarn,rCaut
+            _gLedOff;
+            _oLedOn;
+            _rLedOn;
+            _wHornOn;
+            strcpy(statusStr, "W: Pitch C: Roll");
+          } else {            // no, pWarn only
+            _gLedOn;
+            _oLedOff;
+            _rLedOn;
+            _wHornOn;
+            strcpy(statusStr, "W: Pitch");
+            }
+      } else if (rWarn) {     // rWarn, see if pCaut exists
+          if (pCaut) {        // yes, pCaut,rWarn
+            _gLedOff;
+            _oLedOn;
+            _rLedOn;
+            _wHornOn;
+            strcpy(statusStr, "W: Roll C: Pitch");
+          } else {            // no, rWarn only
+            _gLedOn;
+            _oLedOff;
+            _rLedOn;
+            _wHornOn;
+            strcpy(statusStr, "W: Roll");
+            }
         }
       }
-      
+    //
     if (pCaut || rCaut) {
-
       // annunciate Caution
       if (pCaut && rCaut) {   // pCaut and rCaut
         _gLedOff;
@@ -637,11 +658,11 @@
             _wHornOn;
             strcpy(statusStr, "W: Roll C: Pitch");
           } else {            // no, pCaut only
-            _gLedOff;
+            _gLedOn;
             _oLedOn;
             _rLedOff;
             _wHornOff;
-           strcpy(statusStr, "C: Pitch");
+            strcpy(statusStr, "C: Pitch");
             }
       } else if (rCaut) {     // rCaut, see if pWarn exists
           if (pWarn) {        // yes, pWarn,rCaut
@@ -651,7 +672,7 @@
             _wHornOn;
             strcpy(statusStr, "W: Pitch C: Roll");
           } else {            // no, rCaut only
-            _gLedOff;
+            _gLedOn;
             _oLedOn;
             _rLedOff;
             _wHornOff;
