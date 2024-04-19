@@ -39,7 +39,7 @@
   //  https://github.com/Seeed-Studio/ArduinoCore-mbed/commit/e33b182c4b935b25742595d2907a0f04b965cce6#diff-55b586ca1ce12fa1ac4423cdcb31f05ec84ceaa151784a25d555f3a15620864a
   //
   //  Possible enhancements to consider:
-  //    - Add cute startup splash screen
+  //    - Add cute startup splash screen w/ static, or moving, graphics
   //    - Flashing LEDs in caution and/or warning contexts
   //    - Pulsing Aural Warnings (vs. static tone) in caution and/or warning contexts
   //    - Graphics depicting truck and angle indicators (see https://www.youtube.com/watch?v=PfeZpKERkO8)
@@ -66,22 +66,36 @@
   //
   /*******************************************************************************/
 
-  // todos (15APR24): 
-  // - consider employing preprocessor #defs in favor of const.?.
-  // - employ use of a file system for persistent config storage
-  // - add switch input (temporary connection) to enable intuitive calibration once installed
-  //   then tip to just prior tipping point to set Warning (maybe with a buffer) via button
-  //   press then have a Caut offset of _ degrees.  This would be done in all four directions
-  //   as CG offsets will likely impute deltas between fore/aft and left/right tip points.
-  //   'Calibrated Tip Points' will require NVM storage in flash
+  // todos (as of 18APR24): 
   // - adapt multiple LEDs to one or more neopixel-ish APA106 (5mm and 8mm are on order)
-  // - make dynamic by query of u8g2 lib to get display dims to support multiple OLED geometries
+  // - to support multiple OLED geometries, make dynamic by query of u8g2 for display dims
   // - make orientation assertions more intuitive, add lateral orientations support too
+  // - consider supporting truly dynamic installation orientations (may need to make use of 
+  //   rotation matricies || quaternions to prevent gimbal lock)
   // - evaluate expanding sensed accelerometer range, as sensor is 8G/16G, I perceive
   //   but it works as is, so may choose to not muck with what isn't broken...
   // - layer on some UI frosting - visual flashing/iconage, aural toneage, etc.
   // - consider muting the aural warning after _ seconds if static
+  // - consider having single short button press when running to 'cage' orientation (i.e.
+  //   applying axial offsets, if practical, given an accelerometer-only employment) 
+  // - nRF52840 WDT implementation is pretty underwhelming - likely by conservative design.
+  //   Once started, can't pause it, can't reconfigure until reset, pretty much locked down
+  //   once started.  As such only using it for software reset purposes in this app.  As
+  //   such, this todo is to evaluate timer interrupts to implement a software WDT that calls 
+  //   an ISR to start WDT with a CRV of 1 to implement a reset in ~31uS - that ISR is the 
+  //   existing resetInclinometer(); function which is indeed using the WDT w/ CRV of 1...
+
+  // completed (as of 18APR24)
+  // - consider employing preprocessor #defs in favor of const.?.
+  // - employ use of a file system for persistent config storage
+  // - add switch input (temporary connection?) to enable intuitive calibration once installed
+  //   then tip to just prior tipping point to set Warning (maybe with a buffer) via button
+  //   press then have a Caut offset of _ degrees.  This would be done in all four directions
+  //   as CG offsets will likely impute deltas between fore/aft and left/right tip points.
+  //   'Calibrated Tip Points' will require NVM storage in flash
   // - add rotating char to corner to depict loop running cycle through: - \ | / 
+  // - figure out how to do a SW reset on the nRF52840 so Inclinometer can be forcibly reset
+  //   after a configuration event <-- made use of the WDT with a CRV of 0x01 = ~31uS
 
   /*
 
@@ -166,119 +180,7 @@
 
   // ########################################################################################
 
-// XIAO INCLINOMETER PREPROCESSOR DIRECTIVES ################################################
-
-  // digital io assignments for LEDs and Aural Warning Device
-  #define _io_GLed 11
-  #define _io_OLed 10
-  #define _io_RLed 9
-  #define _io_WHorn 8
-  #define _io_UsrSw 7
-
-  // states
-  #define led_On  0
-  #define led_Off  1
-  #define wHorn_On  0
-  #define wHorn_Off  1
-
-  // for readability
-  #define _gLedOff  digitalWrite(_io_GLed,led_Off)
-  #define _gLedOn   digitalWrite(_io_GLed,led_On)
-  #define _oLedOff  digitalWrite(_io_OLed,led_Off)
-  #define _oLedOn   digitalWrite(_io_OLed,led_On)
-  #define _rLedOff  digitalWrite(_io_RLed,led_Off)
-  #define _rLedOn   digitalWrite(_io_RLed,led_On)
-  #define _wHornOff digitalWrite(_io_WHorn,wHorn_Off)
-  #define _wHornOn  digitalWrite(_io_WHorn,wHorn_On)
-
-  #define _switchReleased (digitalRead(_io_UsrSw))
-  #define _switchPressed  (!_switchReleased)
-
-  // normalizing accelerometer values per guidance: 
-  // https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino
-  // given raw is -1.x|1.x, 'normalized' to 0|2047  
-  // normalized = (raw * multiplier) + offset
-  #define _accelNormOffset  1024
-  #define _accelNormMulti   1023
-
-  // max/min 'normalized' values - from -1.0|1.0 map'd to 0|2047 - a -1G-1G range
-  #define  _accNormMin 0
-  #define  _accNormMax 2047
-
-  // delays
-  #define _splashDly  3000
-  #define _imuDly     3000
-  
-  // common _ui Window element ##############################################################
-
-    #define _uiColor_BlackOnWhite 0
-    #define _uiColor_WhiteOnBlack 1
-
-    #define _splashOffset1X
-    #define _splashOffset2X
-    
-
-  // _ui_Data Window Display Elements #######################################################
-
-    // font for labels/data/symbols/etc
-    #define _ui_DataFont  u8g2_font_10x20_te
-
-    // top half is for data display
-    #define _ui_DataWinX  0
-    #define _ui_DataWinY  0
-    #define _ui_DataWinW  128
-    #define _ui_DataWinH  16
-
-    // labels
-    #define _ui_PitchLblTxtOffsetX 0
-    #define _ui_PitchLblTxtOffsetY 14
-
-    #define _ui_RollLblTxtOffsetX 65
-    #define _ui_RollLblTxtOffsetY 14
-
-    // pitch text offsets in data win
-    #define _ui_PitchDataTxtOffsetX 13
-    #define _ui_PitchDataTxtOffsetY 14
-
-    // roll text offsets in data win
-    #define _ui_RollDataTxtOffsetX 78
-    #define _ui_RollDataTxtOffsetY 14
-
-    #define _ui_DataDegSymOffsetX  -7
-    #define _ui_DataDegSymOffsetY  -1
-
-    // ######################################################################################
-
-  // _ui_Status Window Display Elements #####################################################
-
-    // font for status/prompts/etc.
-    #define _ui_StatFont  u8g2_font_6x12_te
-
-    // bottom half is for icons/status/prompts/etc
-    #define _ui_StatWinX  0
-    #define _ui_StatWinY  17
-    #define _ui_StatWinW  128
-    #define _ui_StatWinH  16
-
-    // heartbeat text offsets in stat win
-    #define _ui_HBStatTxtOffsetX 0
-    #define _ui_HBStatTxtOffsetY 12
-
-    // heartbeat text offsets in stat win
-    #define _ui_PromptTxtOffsetX 9
-    #define _ui_PromptTxtOffsetY 12
-
-  // #Includes ##############################################################################
-
-    #include "LSM6DS3.h"
-    #include <Arduino.h>
-    #include <U8g2lib.h>
-    #include <SPI.h>
-    #include "Wire.h"
-
-  // ########################################################################################
-
-// LITTLE FS INSTANTIATION ##################################################################
+// LITTLE FS PREPROCESSOR DIRECTIVES ########################################################
 
   // LittleFS lib stuiffs  -  Added the first #def because:
   // https://forum.seeedstudio.com/t/how-to-store-persistent-data-on-xiao-ble-sense/266711/3
@@ -472,6 +374,138 @@
 
   // ########################################################################################
 
+
+
+
+// XIAO INCLINOMETER PREPROCESSOR DIRECTIVES ################################################
+
+  // digital io assignments for LEDs and Aural Warning Device
+  #define _io_GLed 11   //10 w/ arduino core - mbed core was met with an update to IO IDs...
+  #define _io_OLed 10   //9
+  #define _io_RLed 9    //8
+  #define _io_WHorn 8   //7
+  #define _io_UsrSw 7   //6
+
+  // states
+  #define led_On  0
+  #define led_Off  1
+  #define wHorn_On  0
+  #define wHorn_Off  1
+
+  // for readability
+  #define _gLedOff  digitalWrite(_io_GLed,led_Off)
+  #define _gLedOn   digitalWrite(_io_GLed,led_On)
+  #define _oLedOff  digitalWrite(_io_OLed,led_Off)
+  #define _oLedOn   digitalWrite(_io_OLed,led_On)
+  #define _rLedOff  digitalWrite(_io_RLed,led_Off)
+  #define _rLedOn   digitalWrite(_io_RLed,led_On)
+  #define _wHornOff digitalWrite(_io_WHorn,wHorn_Off)
+  #define _wHornOn  digitalWrite(_io_WHorn,wHorn_On)
+
+  #define _switchReleased (digitalRead(_io_UsrSw))
+  #define _switchPressed  (!_switchReleased)
+
+  // normalizing accelerometer values per guidance: 
+  // https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino
+  // given raw is -1.x|1.x, 'normalized' to 0|2047  
+  // normalized = (raw * multiplier) + offset
+  #define _accelNormOffset  1024
+  #define _accelNormMulti   1023
+
+  // max/min 'normalized' values - from -1.0|1.0 map'd to 0|2047 - a -1G-1G range
+  #define  _accNormMin 0
+  #define  _accNormMax 2047
+
+  // delays
+  #define _splashDly  3000
+  #define _imuDly     3000
+  #define _lfsDly     3000
+  #define _cfgDly     3000
+  #define _initDly    3000
+  #define _dispDly    3000
+  #define _ioDly      3000
+  #define _commsDly   3000
+
+  // common _ui Window element ##############################################################
+
+  #define _uiColor_BlackOnWhite 0
+  #define _uiColor_WhiteOnBlack 1
+  
+  // experimental _ui display controls ######################################################
+
+  #define _splashOffset1X
+  #define _splashOffset2X
+    
+  // for config file key/value pair #########################################################
+
+  #define kvStrLen  63
+    
+  // _ui_Data Window Display Elements #######################################################
+
+    // font for labels/data/symbols/etc
+    #define _ui_DataFont  u8g2_font_10x20_te
+
+    // top half is for data display
+    #define _ui_DataWinX  0
+    #define _ui_DataWinY  0
+    #define _ui_DataWinW  128
+    #define _ui_DataWinH  16
+
+    // labels
+    #define _ui_PitchLblTxtOffsetX 0
+    #define _ui_PitchLblTxtOffsetY 14
+
+    #define _ui_RollLblTxtOffsetX 65
+    #define _ui_RollLblTxtOffsetY 14
+
+    // pitch text offsets in data win
+    #define _ui_PitchDataTxtOffsetX 13
+    #define _ui_PitchDataTxtOffsetY 14
+
+    // roll text offsets in data win
+    #define _ui_RollDataTxtOffsetX 78
+    #define _ui_RollDataTxtOffsetY 14
+
+    #define _ui_DataDegSymOffsetX  -7
+    #define _ui_DataDegSymOffsetY  -1
+
+    // ######################################################################################
+
+  // _ui_Status Window Display Elements #####################################################
+
+    // font for status/prompts/etc.
+    #define _ui_StatFont  u8g2_font_6x12_te
+
+    // bottom half is for icons/status/prompts/etc
+    #define _ui_StatWinX  0
+    #define _ui_StatWinY  17
+    #define _ui_StatWinW  128
+    #define _ui_StatWinH  16
+
+    // heartbeat text offsets in stat win
+    #define _ui_HBStatTxtOffsetX 0
+    #define _ui_HBStatTxtOffsetY 12
+
+    // heartbeat text offsets in stat win
+    #define _ui_PromptTxtOffsetX 9
+    #define _ui_PromptTxtOffsetY 12
+
+    // period in mS to force a device reset if the switch is continuously held
+    #define _switchHeldResetPeriod 5000
+
+    // runtime configuration elements 
+    #define _configFileName MBED_FS_FILE_PREFIX "/XiaoInclinometer.ini"
+
+  // #Includes ##############################################################################
+
+    #include "LSM6DS3.h"
+    #include <Arduino.h>
+    #include <U8g2lib.h>
+    #include <SPI.h>
+    #include "Wire.h"
+
+  // ########################################################################################
+
 // XIAO INCLINOMETER SETUP ##################################################################
 
   // Create a instance of class LSM6DS3 (the 6Dof IMU)
@@ -482,22 +516,59 @@
 
   // required by u8g2 lib - needs ram-based vars for use
   char msgStr[63];     // for use w/ u8g2 lib var string
-  char statusStr[63];     // for use w/ u8g2 lib var string
+  char statusStr[63];  // for use w/ u8g2 lib var string
+
+  // for use in parsing config file
+  char kvBuf[kvStrLen];    // buffer string 
+  char keyStr[kvStrLen];    // key
+  char valStr[kvStrLen];  // value
 
   int cWidth = 9;         // todo: set via query of u8g2 lib for specified font during setup
 
-  uint32_t timeStart = 0;
-  uint32_t timeNow = 0;
-  uint32_t timeEnd = 0;
-  uint32_t loopCnt = 0;
+  int_fast64_t timeStart = 0;
+  int_fast64_t timeNow = 0;
+  int_fast64_t timeEnd = 0;
+  int_fast64_t loopCnt = 0;
   double loopRate = 0;
+
+  char heartBeat[] = "-\\|/";
+  int hbIdx = 0;
+
+  int pitch = 0;
+  int roll = 0;
+
+
+  // these are ini file items:
 
   // Xiao Sense SBC installed orientation correction flag and sensed angle trip point defaults
   // these will be updated with ini file values during setup
-  // currently (15APR24), supports one of 4 longitudinal orientations only (i.e. usb fore/aft)
-  int bInv = -1;    // board inversion flag - 0 for non-inverted or -1 to invert
-  int pDir = 1;     // pitch inversion flag - 1 for non-inverted or -1 to invert
-  int rDir = -1;    // roll inversion flag - 1 for non-inverted or -1 to invert
+  // currently (15APR24), supports one of 4 longitudinal orientations only (i.e. usb fore/aft, either inverted or not)
+
+  // orientation inverted with usb connector towards nose
+  int bInv = -1;    // board inversion flag: 1 for non-inverted or -1 to invert
+  int pDir = 1;     // pitch inversion flag: 1 for non-inverted or -1 to invert
+  int rDir = -1;    //  roll inversion flag: 1 for non-inverted or -1 to invert
+
+  // uncomment one of the following blocks as appropriate for installed orientation
+  // for inverted with usb connector towards nose
+  //int bInv = -1;    // board inversion flag: 1 for non-inverted or -1 to invert
+  //int pDir = 1;     // pitch inversion flag: 1 for non-inverted or -1 to invert
+  //int rDir = -1;    //  roll inversion flag: 1 for non-inverted or -1 to invert
+
+  // for non-inverted with usb connector towards bow
+  //int bInv = 1;     // board inversion flag: 1 for non-inverted or -1 to invert
+  //int pDir = -1;    // pitch inversion flag: 1 for non-inverted or -1 to invert
+  //int rDir = -1;    //  roll inversion flag: 1 for non-inverted or -1 to invert
+
+  // for inverted with usb connector towards tail
+  // int bInv = -1;   // board inversion flag: 1 for non-inverted or -1 to invert
+  // int pDir = -1;   // pitch inversion flag: 1 for non-inverted or -1 to invert
+  // int rDir = 1;    //  roll inversion flag: 1 for non-inverted or -1 to invert
+
+  // for non-inverted with usb connector towards tail
+  // int bInv = 1;    // board inversion flag: 1 for non-inverted or -1 to invert
+  // int pDir = 1;    // pitch inversion flag: 1 for non-inverted or -1 to invert
+  // int rDir = 1;    //  roll inversion flag: 1 for non-inverted or -1 to invert
 
   // setup: determine/set these after the sensor is installed in the vehicle and tested for pitch and roll stability
   int pTipFwdAngCaut = 30;
@@ -512,12 +583,18 @@
   int rTipLtAngCaut = -30;
   int rTipLtAngWarn = -45;
 
-  char heartBeat[] = "-\\|/";
-  int hbIdx = 0;
-
   // ########################################################################################
 
 // XIAO INCLINOMETER APP PROCS ##############################################################
+  void resetInclinometer() {
+    //Configure & start WDT with shortest period, to force an 'immediate' reset via SW
+    Serial.println("\nResetting Processor via WDT");
+    NRF_WDT->CONFIG         = 0x01;     // Configure WDT to run when CPU is asleep
+    NRF_WDT->CRV            = 1;        // load CRV - with 1 - should reset at Start + ~30uS (32.768KHz based)
+    NRF_WDT->RREN           = 0x01;     // Enable the RR[0] reload register
+    NRF_WDT->TASKS_START    = 1;        // Triggers the Start WDT - not stoppable hereafter , until post-reset...      
+    }
+
   void showSplash() {
 
     clearDisplay();
@@ -525,14 +602,216 @@
     u8g2.drawStr(0,15,"   ~MHz");
     u8g2.drawStr(0,30,"Roll-o-Meter");
     u8g2.sendBuffer();
+
     delay(_splashDly);
+
+    }
+
+  void mountFS() {
+
+    clearDisplay();
+    u8g2.setFont(_ui_DataFont);
+
+    // spin up and mount fs
+    #if defined(FS_NANO33BLE_VERSION_MIN)
+
+      if (FS_NANO33BLE_VERSION_INT < FS_NANO33BLE_VERSION_MIN) {
+        Serial.print("Warning. Must use this example on Version equal or later than : ");
+        Serial.println(FS_NANO33BLE_VERSION_MIN_TARGET);
+        }
+
+      #endif
+    //
+
+    Serial.print("\nLittle File System Version: ");
+    Serial.println(FS_NANO33BLE_VERSION);
+    Serial.print("#Defined FS_size (KB) = ");
+    Serial.println(NANO33BLE_FS_SIZE_KB);
+    Serial.print("Calculated FS_ Start Address = 0x");
+    Serial.print(NANO33BLE_FS_START, HEX);
+    Serial.println(" (derived from above #def)");
+
+    Serial.println("\nMounting LittleFS now...");
+
+    myFS = new FileSystem_MBED();
+
+    if (!myFS->init()) {  // FS Mount Failed
+
+      Serial.println("FS Mount Failed - exiting app...");
+
+      u8g2.clearBuffer(); // clear the internal memory
+      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"FS Borked");
+      u8g2.sendBuffer();
+
+      delay(_lfsDly);
+
+      u8g2.clearBuffer(); // clear the internal memory
+      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Exiting App...");
+      u8g2.sendBuffer();
+
+      return; // consider not exiting but rather running with instantiated defaults regardless
+
+    } else {  // FS Mount Succeeded
+
+      u8g2.clearBuffer(); // clear the internal memory
+      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"FS is Mounted");
+      u8g2.sendBuffer();
+
+      }
+
+    delay(_lfsDly);
+
+    }  
+
+  void deleteConfig() {
+
+      Serial.print("Deleting file: ");
+      Serial.print(_configFileName);
+
+      if (remove(_configFileName) == 0)
+      {
+        Serial.println(" => OK");
+      }
+      else
+      {
+        Serial.println(" => Failed");
+        return;
+      }
+    }
+
+  void createConfig() {
+
+    char message[63];
+    deleteConfig();
+
+    strcpy(message,"bInv=-1\n");
+    writeFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"pDir=1\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"rDir=-1\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"pTipFwdAngCaut=30\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"pTipFwdAngWarn=45\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"pTipAftAngCaut=-30\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"pTipAftAngWarn=-45\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"rTipRtAngCaut=30\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"rTipRtAngWarn=45\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"rTipLtAngCaut=-30\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    strcpy(message,"rTipLtAngWarn=-45\n");
+    appendFile(_configFileName, message, sizeof(message));
+
+    readFile(_configFileName);
+
+    }
+  
+  void updateConfig() {
+  
+    }
+
+  void loadConfig() {
+    
+    /*
+    clearDisplay();
+    u8g2.setFont(_ui_DataFont);
+
+    // init app from config file, if exists, or defaults -> n ew config file, if it doesn't...
+
+    char configFN[] = _configFileName;
+
+    // try to open file
+    // on error, create file and write values to same
+    // on OK, parse and assign var values from content
+
+    Serial.print("\nChecking Config File: ");
+    Serial.print(configFN);
+
+    FILE *file = fopen(configFN, "r");
+
+    if (file) {
+      Serial.println(" => Open OK");
+
+      // parse and assign
+
+      char c;
+      int kvFlag = 0;  // 0 = key, 1 = value
+      int kvpIdx = 0;  // counter of key/value pair 
+      int kvBufIdx = 0; // buf pos index
+
+      // zero out kv/buf char arrays
+      for (int i=0;i<kvStrLen;i++) {kvBuf[i] = 0; keyStr[i] = 0; valStr[i] = 0; }
+
+      while (true) {
+        c = fgetc(configFN); // get char from file
+
+        if (feof(configFN)) {// see if it is end of file, if so
+          // test to ensure that we're building a value, raising an error if not, else
+          // assign buf as key's val and break out of loop
+
+          break;
+        } else if (0) { // test for "=" and !kvFlag to see if we are done with key building 
+          // ?? do a switch case here to compare key with expected keys and assign val to the matching key
+          // ?? if no matching key (case default), raise an exception, else
+          // reset bufidx, toggle kvflag, 
+
+        } else if (0) { // test for "\n" and kvFlag to see if we are done with val building  if so
+          // do a test to affirm that there was a preceeding key and raise exception if not
+          // do a switch case here to compare key with expected keys and assign val to the matching key
+          // ++kvpIdx
+          // if no matching key (case default), raise an exception
+
+        } else if (0) { // test for valid ascii ranges and if good, add c to buff, ++kvBufIdx, and carry on
+
+        } else { // emit debug to advise unexpected 
+          Serial.print(c);
+        }
+        }
+
+      fclose(configFN);
+
+      u8g2.clearBuffer(); // clear the internal memory
+      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Config Loaded");
+      u8g2.sendBuffer();
+
+      }  else   {
+
+      Serial.println(" => Open Failed\n");
+
+      // create new config file
+      // write values (default) to file
+
+      u8g2.clearBuffer(); // clear the internal memory
+      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Config is MIA");
+      u8g2.sendBuffer();
+
+      strcpy(statusStr, "Using Defaults");
+      showStatus();
+
+      }
+      */
+      delay(_cfgDly);
 
     }
 
   void startIMU() {
 
     clearDisplay();
-
     u8g2.setFont(_ui_DataFont);
 
     //Call .begin() to configure the IMU & show status on oled
@@ -546,11 +825,11 @@
         _rLedOn;
         _wHornOn;
 
-        return;
+        return; // IMU is required so an overt exiting is appropriate
 
       } else {
 
-        u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"IMU OK");
+        u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"IMU is Good");
         u8g2.sendBuffer();
 
         _gLedOn;
@@ -560,11 +839,48 @@
 
       }
 
+    Serial.println("\IMU Started");
+
     delay(_imuDly);
 
     }
 
-  void showAttitude(int pitch, int roll) {
+  void displayPitchRoll() {
+
+    // uses globals pitch, roll
+
+    u8g2.setFont(_ui_DataFont);   // 10w x 20h A=13
+
+    // draw black box vs. clearing the whole display - helps to prevent flickering of Status Window Contents
+    u8g2.setDrawColor(_uiColor_BlackOnWhite);
+    u8g2.drawBox(_ui_DataWinX,_ui_DataWinY,_ui_DataWinW,_ui_DataWinH);
+    u8g2.setDrawColor(_uiColor_WhiteOnBlack);
+
+    // draw labels and populate data passed
+    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"P");
+    u8g2.drawStr(_ui_DataWinX+_ui_RollLblTxtOffsetX,_ui_DataWinY+_ui_RollLblTxtOffsetY,"R");
+
+    // draw values
+    itoa(pitch,msgStr,10);
+    u8g2.drawStr(_ui_DataWinX+_ui_PitchDataTxtOffsetX,_ui_DataWinY+_ui_PitchDataTxtOffsetY,msgStr);
+
+    itoa(roll,msgStr,10);
+    u8g2.drawStr(_ui_DataWinX+_ui_RollDataTxtOffsetX,_ui_DataWinY+_ui_RollDataTxtOffsetY,msgStr);
+
+    // draw degree symbol (pos dependent on signs/values of pitch and roll values)
+    String temp1 = String(pitch);
+    String temp2 = String(roll);
+    u8g2.drawUTF8(_ui_DataWinX+_ui_PitchDataTxtOffsetX+((temp1.length()+1)*cWidth)+_ui_DataDegSymOffsetX,_ui_DataWinY+_ui_PitchDataTxtOffsetY+_ui_DataDegSymOffsetY,"°");
+    u8g2.drawUTF8(_ui_DataWinX+_ui_RollDataTxtOffsetX+((temp2.length()+1)*cWidth)+_ui_DataDegSymOffsetX,_ui_DataWinY+_ui_RollDataTxtOffsetY+_ui_DataDegSymOffsetY,"°");
+
+    // and push the buffer out to the display
+    u8g2.sendBuffer();
+
+    }
+
+  void assertOrientationStates() {
+
+    // uses globals pitch, roll
 
     // clear flags on each iteration
     // _Warn higher priority than _Caut
@@ -599,7 +915,8 @@
 
       char strg[32] = "";
 
-      sprintf (strg, "Good Attitude (%1.0fHz)", loopRate);
+      sprintf (strg, "Orientation OK %1.0fHz", loopRate);
+      //sprintf (strg, "");
       strcpy(statusStr, strg);
       }
     //
@@ -680,35 +997,6 @@
             }
         }
       }
-
-    //
-    u8g2.setFont(_ui_DataFont);   // 10w x 20h A=13
-
-    // draw black box vs. clearing the whole display - helps to prevent flickering of Status Window Contents
-    u8g2.setDrawColor(_uiColor_BlackOnWhite);
-    u8g2.drawBox(_ui_DataWinX,_ui_DataWinY,_ui_DataWinW,_ui_DataWinH);
-    u8g2.setDrawColor(_uiColor_WhiteOnBlack);
-
-    // draw labels and populate data passed
-    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"P");
-    u8g2.drawStr(_ui_DataWinX+_ui_RollLblTxtOffsetX,_ui_DataWinY+_ui_RollLblTxtOffsetY,"R");
-
-    // draw values
-    itoa(pitch,msgStr,10);
-    u8g2.drawStr(_ui_DataWinX+_ui_PitchDataTxtOffsetX,_ui_DataWinY+_ui_PitchDataTxtOffsetY,msgStr);
-
-    itoa(roll,msgStr,10);
-    u8g2.drawStr(_ui_DataWinX+_ui_RollDataTxtOffsetX,_ui_DataWinY+_ui_RollDataTxtOffsetY,msgStr);
-
-    // draw degree symbol (pos dependent on signs/values of pitch and roll values)
-    String temp1 = String(pitch);
-    String temp2 = String(roll);
-    u8g2.drawUTF8(_ui_DataWinX+_ui_PitchDataTxtOffsetX+((temp1.length()+1)*cWidth)+_ui_DataDegSymOffsetX,_ui_DataWinY+_ui_PitchDataTxtOffsetY+_ui_DataDegSymOffsetY,"°");
-    u8g2.drawUTF8(_ui_DataWinX+_ui_RollDataTxtOffsetX+((temp2.length()+1)*cWidth)+_ui_DataDegSymOffsetX,_ui_DataWinY+_ui_RollDataTxtOffsetY+_ui_DataDegSymOffsetY,"°");
-
-    // and push ther buffer out to the display
-    u8g2.sendBuffer();
-
     }
 
   void printLine() {
@@ -810,9 +1098,136 @@
   void calIncl() {
     Serial.println("\nCalibrating Inclinometer ...");
     //    clearDisplay();
+
     delay(3000);   // 10hz rate
 
     Serial.println("\n... Inclinometer Calibrated");
+    }
+
+  void shortBeep() {
+
+    delay(100);
+    _wHornOn;
+    delay(100);
+    _wHornOff;
+
+    }
+
+  void longBeep() {
+
+    delay(750);
+    _wHornOn;
+    delay(750);
+    _wHornOff;
+
+    }
+
+  void doubleBeep() {
+
+    delay(100);
+    _wHornOn;
+    delay(100);
+    _wHornOff;
+
+    delay(100);
+
+    _wHornOn;
+    delay(100);
+    _wHornOff;
+
+    }
+
+  void errorBeep() {
+    longBeep();
+    delay(250);
+    longBeep();
+    delay(250);
+    longBeep();
+    }
+
+  void tripleBeep() {
+    shortBeep();
+    doubleBeep();
+    }
+
+  void startDisplay() {
+
+    if (!u8g2.begin()) {  // Display Start Failed
+
+      Serial.println("\nDisplay Start Failed - exiting app...");
+      return;
+
+    } else {  // Display Start Succeeded
+
+      Serial.println("\nDisplay Started");
+      clearDisplay();
+
+      // suppress - splash will be enuf... 
+    //      u8g2.setFont(_ui_DataFont);
+    //      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Display OK");
+    //      u8g2.sendBuffer();
+
+      }
+
+    //    delay(_dispDly);
+
+    }
+
+  void setupIO() {
+
+    // setup IO states, enabling each after being set
+    _gLedOff;
+    pinMode(_io_GLed , OUTPUT);
+
+    _oLedOff;
+    pinMode(_io_OLed , OUTPUT);
+
+    _rLedOff;
+    pinMode(_io_RLed , OUTPUT);
+
+    _wHornOff;
+    pinMode(_io_WHorn , OUTPUT);
+
+    // open sw needs pullup
+    pinMode(_io_UsrSw, INPUT_PULLUP);
+
+    Serial.println("\nIO configured");
+
+    clearDisplay();
+    u8g2.setFont(_ui_DataFont);
+    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"IO is Setup");
+    u8g2.sendBuffer();
+
+    delay(_ioDly);
+
+    }
+
+  void initComms() {
+
+    // instantiate console comms
+    Serial.begin(115200);
+    while (!Serial && millis() < 5000);
+    delay(1000);
+
+    // clear the arduino ide serial console
+    //Serial.print(char(27)); Serial.print("[2J");
+    //Serial.print("\x1B" "[2J");
+    Serial.print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"); // really, my eyes just went zenith and gimbal locked there. smdh...
+
+    // emit app vitals to console
+    Serial.println("\nSerial Comms Up");
+    Serial.println("\n~MHz Roll-o-Meter ...");
+    //Serial.print("Xiao Inclinometer with LittleFS running on ");
+    Serial.print("Xiao Inclinometer running on ");
+    Serial.println(BOARD_NAME);
+
+    clearDisplay();
+    u8g2.setFont(_ui_DataFont);
+    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Good Comms");
+    u8g2.sendBuffer();
+
+    delay(_commsDly);
+
     }
 
   void clearDisplay() {
@@ -881,7 +1296,7 @@
       }
     }
 
-  void showHeartBeat() {
+  void showStatus() {
 
     if (!heartBeat[hbIdx]) {
       hbIdx = 0;
@@ -921,174 +1336,7 @@
     u8x8_cad_EndTransfer(u8g2.getU8x8());
     }
 
-  // ########################################################################################
-
-// XIAO INCLINOMETER APP ####################################################################
-  void setup(void) {
-
-    timeStart = millis();
-
-    // instantiate console comms
-    Serial.begin(115200);
-    while (!Serial && millis() < 5000);
-    delay(1000);
-
-    // emit app vitals to console
-    Serial.println("\n~MHz Roll-o-Meter ...");
-    Serial.print("Xiao Inclinometer with LittleFS running on ");
-    Serial.println(BOARD_NAME);
-    Serial.println(FS_NANO33BLE_VERSION);
-
-    // spin up and mount fs
-    #if defined(FS_NANO33BLE_VERSION_MIN)
-
-      if (FS_NANO33BLE_VERSION_INT < FS_NANO33BLE_VERSION_MIN) {
-        Serial.print("Warning. Must use this example on Version equal or later than : ");
-        Serial.println(FS_NANO33BLE_VERSION_MIN_TARGET);
-        }
-
-      #endif
-
-    Serial.print("#Defined FS_size (KB) = ");
-    Serial.println(NANO33BLE_FS_SIZE_KB);
-    Serial.print("Calculated FS_ Start Address = 0x");
-    Serial.print(NANO33BLE_FS_START, HEX);
-    Serial.println(" (derived from above #def)");
-
-    Serial.println("\nMounting LittleFS now...");
-
-    myFS = new FileSystem_MBED();
-
-    if (!myFS->init()) {
-      Serial.println("FS Mount Failed");
-
-      return;
-      }
-
-    // init app from config file, if exists, or defaults -> n ew config file, if it doesn't...
-
-    char configFN[] = MBED_FS_FILE_PREFIX "/XiaoInclinometer.ini";
-
-    // try to open file
-    // on error, create file and write values to same
-    // on OK, parse and assign var values from content
-
-    Serial.print("\nChecking Config File: ");
-    Serial.print(configFN);
-
-    FILE *file = fopen(configFN, "r");
-
-    if (file) {
-        Serial.println(" => Open OK");
-        // parse and assign
-      }  else   {
-        Serial.println(" => Open Failed");
-        // create new config file
-        // write values (default) to file
-      }
-
-
-    // testing - it works...
-    //		fsVerboseErr();
-    //		fsVerboseErr(0);
-    //		fsVerboseErr(-5);
-    //		fsVerboseErr(-84);
-    //		fsVerboseErr(-2);
-    //		fsVerboseErr(-17);
-    //		fsVerboseErr(-20);
-    //		fsVerboseErr(-21);
-    //		fsVerboseErr(-39);
-    //		fsVerboseErr(-9);
-    //		fsVerboseErr(-27);
-    //		fsVerboseErr(-22);
-    //		fsVerboseErr(-28);
-    //		fsVerboseErr(-12);
-    //		fsVerboseErr(-61);
-    //		fsVerboseErr(-36);
-    //		fsVerboseErr(-99);
-
-    /*  This comment block contains FS_Test code - included for initial FS testing being integrated into an existing sketch - it works...
-
-    char fileName1[] = MBED_FS_FILE_PREFIX "/hello1.txt";
-    char fileName2[] = MBED_FS_FILE_PREFIX "/hello2.txt";
-
-    char message[]  = "Hello from Nano_33_BLE\n";
-
-    printLine();
-    writeFile(fileName1, message, sizeof(message));
-    printLine();
-    readFile(fileName1);
-    printLine();
-
-    appendFile(fileName1, message, sizeof(message));
-    printLine();
-    readFile(fileName1);
-    printLine();
-
-    renameFile(fileName1, fileName2);
-    printLine();
-    readCharsFromFile(fileName2);
-    printLine();
-
-    deleteFile(fileName2);
-    printLine();
-    readFile(fileName2);
-    printLine();
-
-    testFileIO(fileName1);
-    printLine();
-    testFileIO(fileName2);
-    printLine();
-    deleteFile(fileName1);
-    printLine();
-    deleteFile(fileName2);
-    printLine();
-
-    Serial.println( "\nTest complete" );
-
-    */
-
-    // setup IO states, enabling each after being set
-    _gLedOff;
-    pinMode(_io_GLed , OUTPUT);
-
-    _oLedOff;
-    pinMode(_io_OLed , OUTPUT);
-
-    _rLedOff;
-    pinMode(_io_RLed , OUTPUT);
-
-    _wHornOff;
-    pinMode(_io_WHorn , OUTPUT);
-
-    pinMode(_io_UsrSw, INPUT_PULLUP);
-
-    // start oled driver
-    u8g2.begin();
-    showSplash(); // has own delay
-
-    // start imu
-    startIMU(); // has own delay
-
-    u8g2.clearBuffer(); // clear the internal memory
-
-    timeEnd = millis() - timeStart;
-
-    Serial.print("\nInit complete in (ms) ");
-    Serial.println(timeEnd);
-
-    Serial.println("\n... Inclinometer Startup Complete - Entering Main Loop");
-
-    timeStart = millis();
-
-    }
-
-  void loop() {
-
-    loopCnt++;
-    loopRate = (loopCnt*100000)/((millis() - timeStart));
-    loopRate /= 100;
-
+  void updateOrientation() {	
     // init vars for angle calculations
     int xAng = 0;
     int yAng = 0;
@@ -1116,8 +1364,8 @@
       }
 
     // convert radians to degrees, inverting if so needed
-    int pitch = (RAD_TO_DEG * (atan2(-xAng, -zAng) + PI)) * pDir;
-    int roll = (RAD_TO_DEG * (atan2(-yAng, -zAng) + PI)) * rDir;
+    pitch = (RAD_TO_DEG * (atan2(-xAng, -zAng) + PI)) * pDir;
+    roll = (RAD_TO_DEG * (atan2(-yAng, -zAng) + PI)) * rDir;
 
     // correct per orientation flags
     if (pDir < 0) {
@@ -1132,25 +1380,93 @@
     if (pitch > 180) {
       pitch = pitch - 360;
       }
+
     if (roll > 180) {
       roll = roll - 360;
       }
 
-    showAttitude(pitch, roll);
-    showHeartBeat();
+    }
 
-    // test for config gesture
+  void pollUI() {
+
     if (_switchPressed) {
+
+      shortBeep();
+
       Serial.println("\nCalibration Mode Triggered");
       strcpy(statusStr, "Cal Triggered");
-      showHeartBeat();
+      showStatus();
+
+      int pressTime = millis();
+
       while (_switchPressed) {
-        //dwell until released
+        //dwell until released, counting to see how long held and, if held more than 5 seconds, reset the inclinometer
+
+        if ((millis() - pressTime) > _switchHeldResetPeriod) {
+          resetInclinometer();
+          }
+
         }
-      calIncl();
+      createConfig();
+      doubleBeep();
+
+      //calIncl();
       }
 
-    delay(160);   // ~5hz rate
+    }
+
+  // ########################################################################################
+
+// XIAO INCLINOMETER APP ####################################################################
+  void setup() {
+
+    timeStart = millis(); // catch init start time - ~49 day rollover
+
+    startDisplay();
+    showSplash();
+    initComms();
+    setupIO();
+    mountFS();
+    loadConfig();
+    startIMU();
+
+    timeEnd = millis() - timeStart; // catch init end time
+
+    Serial.print("\nInit complete in (ms) ");
+    Serial.println(timeEnd);
+    Serial.println("\n... Inclinometer Startup Complete - Entering Main Loop");
+
+    clearDisplay();
+    u8g2.setFont(_ui_DataFont);
+    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Starting ~MHz");
+    u8g2.sendBuffer();
+
+    strcpy(statusStr, "Roll-o-Meter :)");
+    showStatus();
+
+    tripleBeep();
+    delay(_initDly);
+
+    clearDisplay();
+
+    timeStart = millis();
+
+    }
+
+  void loop() {
+
+    loopCnt++;
+    loopRate = (loopCnt*100000)/((millis() - timeStart));
+    loopRate /= 100;
+
+    updateOrientation();
+    displayPitchRoll();
+    assertOrientationStates();
+    showStatus();
+    pollUI();
+
+    // delay(160);   // ~5hz rate
+
     }
 
   // ########################################################################################
