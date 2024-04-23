@@ -1,246 +1,262 @@
-// XIAO BLE SENSE INCLINOMETER PREAMBLE #####################################################
-
+// XIAO nRF52840 BLE SENSE INCLINOMETER PREAMBLE ############################################
   /*****************************************************************************/
-  //  HighLevelExample.ino
-  //  Hardware:      Grove - 6-Axis Accelerometer&Gyroscope
-  //	Arduino IDE:   Arduino-1.65
-  //	Author:	       Lambor
-  //	Date: 	       Oct,2015
-  //	Version:       v1.0
-  //
-  //  Modified by:  ~MHz (a.k.a. Tod Wulff)
-  //  Data:         13-14 Apr 2024
-  //  Description:  Adapted for use with a Seeed Studio XIAO nRF52840 Sense
-  //                Added 128x32 i2c oled display for pitch/roll (FPV use)
-  //                Added LEDs for driver visual queue of approaching tip over
-  //                Added switched output for driving an aural warning device
-  //                See video:  https://youtu.be/2NaQaHJ9XEI
-  //
-  //  Inspiration/References:
-  //  Scale Built RC's Roll-o-Meter - Thanks brother!
-  //    - https://www.youtube.com/watch?v=PfeZpKERkO8
-  //  https://wiki.seeedstudio.com/XIAO-BLE-Sense-IMU-Usage/
-  //  https://github.com/camerontech/inclinometer
-  //  https://forum.seeedstudio.com/t/xiao-sense-accelerometer-examples-and-low-power/270801
-  //  https://forum.seeedstudio.com/t/seeed-xiao-ble-nrf52840-sense-giving-bad-gyroscope-data/274134/11
-  //  https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino  <-- this
-  //  + a bunch of others for the oled display (using u8g2 lib)
-  //
-  //  by www.seeedstudio.com
-  //
-  //  This library is free software; you can redistribute it and/or
-  //  modify it under the terms of the GNU Lesser General Public
-  //  License as published by the Free Software Foundation; either
-  //  version 2.1 of the License, or (at your option) any later version.
-  //
-  //  This library is distributed in the hope that it will be useful,
-  //  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-  //  Lesser General Public License for more details.
-  //
-  //  You should have received a copy of the GNU Lesser General Public
-  //  License along with this library; if not, write to the Free Software
-  //  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-  //
-  /*******************************************************************************/
-  //
-  // possible enhancements to consider / todos (as of 23APR24): 
-  // - Add cute startup splash screen w/ static, or moving, graphics
-  // - 'Flashing' LEDs in caution and/or warning contexts
-  // - Pulsing Aural Warnings (vs. static tone) in caution and/or warning contexts
-  // - Graphics depicting truck and angle indicators (see https://www.youtube.com/watch?v=PfeZpKERkO8)
-  // - Flashing Display graphics or tossing a warning display on the oled
-  //   (see https://www.facebook.com/watch/?v=2394412913939607)
-  // - High resolution color UI on appropriate glass 
-  //   (see https://www.facebook.com/scalebuilt/videos/605197420078915)
-  // - implement pwm control of leds ans aurak warning device
-  // - adapt multiple LEDs to one or more neopixel-ish APA106 (5mm and 8mm are on order)
-  // - to support multiple OLED geometries, make dynamic by query of u8g2 for display dims
-  // - add lateral orientations support
-  // - consider supporting truly dynamic installation orientations (may need to make use of 
-  //   rotation matricies || quaternions to prevent gimbal lock)
-  // - layer on some UI frosting - visual flashing/iconage, aural toneage, etc.
-  // - evaluate expanding sensed accelerometer range, as sensor is 8G/16G, I perceive
-  //   but it works as is, so may choose to not muck with what isn't broken...
-  // - evaluate timer interrupts to implement a software WDT that calls an ISR to start WDT with 
-  //   a CRV of 1 to implement a reset in ~31uS - that ISR is the existing resetInclinometer();
-  //   function which is indeed using the WDT w/ CRV of 1...
-  //
-  // completed (as of 23APR24):
-  // - make supported orientation assertions more intuitive
-  // - consider employing preprocessor #defs in favor of const.?.
-  // - employ use of a file system for persistent config storage
-  // - add switch input (temporary connection?) to enable intuitive calibration once installed
-  //   then tip to just prior tipping point to set Warning (maybe with a buffer) via button
-  //   press then have a Caut offset of _ degrees.  This would be done in all four directions
-  //   as CG offsets will likely impute deltas between fore/aft and left/right tip points.
-  //   'Calibrated Tip Points' will require NVM storage in flash
-  // - add rotating char to corner to depict loop running cycle through: - \ | / 
-  // - figure out how to do a SW reset on the nRF52840 so Inclinometer can be forcibly reset
-  //   after a configuration event <-- made use of the WDT with a CRV of 0x01 = ~31uS
-  //
-  //  14Apr24 Sketch Stats on Xiao nRF52840 Sense Target: 
-  //  Sketch uses 70664 bytes (8%) of program storage space. Maximum is 811008 bytes.
-  //  Global variables use 8412 bytes (3%) of dynamic memory, leaving 229156 bytes for 
-  //  local variables. Maximum is 237568 bytes.
-  //
-  //  22APR24: No longer considering a calibration effrort.  the roi is simply not worth
-  //  all that would be needed to implement same.  Nix'd all config and LittleFS shite...
-  //
-  //  - mute aural warning after _ seconds
-  //  - consider having single short button press when running to 'cage' orientation (i.e.
-  //    applying axial offsets, if practical, given an accelerometer-only employment) 
-  //    Actually implemented via WDT reset
-  //  - nRF52840 WDT implementation is pretty underwhelming - likely by conservative design.
-  //    Once started, can't pause it, can't reconfigure until reset, pretty much locked down...
-  //    Once started.  As such only using it for software reset purposes in this app.
+    //  XiaoSenseInclinometer.ino
+    //  Hardware:      Seeed Studio Xiao nRF52840 BLE Sense
+    //	Arduino IDE:   Arduino-2.3.2
+    //	Author:	       Tod Wulff (a.k.a. MegaHurtz/~MHz)
+    //	Date: 	       23 April 2024
+    //	Version:       v1.0
+    //
+    //  Description:  Coded for use with a Seeed Studio Xiao nRF52840 BLE Sense
+    //                Added 128x32 i2c oled display for pitch/roll (FPV use)
+    //                Added LEDs for driver visual queue of approaching tip over
+    //                Added switched output for driving an aural warning device
+    //                See video:  https://youtu.be/2NaQaHJ9XEI
+    //
+    //  Inspiration/References:
+    //  Scale Built RC's Roll-o-Meter - Thanks brother!
+    //    - https://www.youtube.com/watch?v=PfeZpKERkO8
+    //  https://wiki.seeedstudio.com/XIAO-BLE-Sense-IMU-Usage/
+    //  https://github.com/camerontech/inclinometer
+    //  https://forum.seeedstudio.com/t/xiao-sense-accelerometer-examples-and-low-power/270801
+    //  https://forum.seeedstudio.com/t/seeed-xiao-ble-nrf52840-sense-giving-bad-gyroscope-data/274134/11
+    //  https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino  <-- this
+    //  + a bunch of others for the oled display (using u8g2 lib)
+    //
+    //  by www.seeedstudio.com
+    //
+    //  This is free software; you can redistribute it and/or
+    //  modify it under the terms of the GNU Lesser General Public
+    //  License as published by the Free Software Foundation; either
+    //  version 2.1 of the License, or (at your option) any later version.
+    //
+    //  This library is distributed in the hope that it will be useful,
+    //  but WITHOUT ANY WARRANTY; without even the implied warranty of
+    //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+    //  Lesser General Public License for more details.
+    //
+    //  You should have received a copy of the GNU Lesser General Public
+    //  License along with this library; if not, write to the Free Software
+    //  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+    //
+    /*******************************************************************************/
+    //
+  // Possible enhancements to consider / todos (as of 23APR24): 
+    // - Add cute startup splash screen w/ static, or moving, graphics
+    // - 'Flashing' LEDs in caution and/or warning contexts - currently 'works' so might not fix it
+    // - Pulsing Aural Warnings (vs. static tone) in caution and/or warning contexts - meh, maybe...
+    // - Graphics depicting truck and angle indicators (see https://www.youtube.com/watch?v=PfeZpKERkO8)
+    // - Flashing Display graphics or tossing a warning display on the oled
+    //   (see https://www.facebook.com/watch/?v=2394412913939607)
+    // - High resolution color UI on appropriate glass 
+    //   (see https://www.facebook.com/scalebuilt/videos/605197420078915)
+    // - implement pwm control of leds and aural warning device
+    // - adapt multiple LEDs to one or more neopixel-ish APA106 (5mm and 8mm are on order)
+    // - to support multiple OLED geometries, make dynamic by query of u8g2 for display dims
+    // - add lateral orientations support
+    // - consider supporting truly dynamic installation orientations (may need to make use of 
+    //   rotation matricies || quaternions to prevent gimbal lock)
+    // - layer on some UI frosting - visual flashing/iconage, aural toneage, etc.
+    // - evaluate expanding sensed accelerometer range, as sensor is 8G/16G, I perceive
+    //   but it works as is, so may choose to not muck with what isn't broken...
+    // - evaluate timer interrupts to implement a software WDT that calls an ISR to start WDT with 
+    //   a CRV of 1 to implement a reset in ~31uS - that ISR is the existing resetInclinometer();
+    //   function which is indeed using the WDT w/ CRV of 1.  But, user initiated reset is working, so...
+    // - revisit the possible use of a file system for persistent config storage - low roi at this time
+    //
+  // 22APR24: No longer considering a calibration effrort as I perceive that the roi is simply not worth
+    //  all that would be needed to implement same.  Nix'd all config and LittleFS content.  May revisit
+    //  doing so in the future - tbd...  For now, just hard-coded via #defined init of related variables.
+    //
+  // Completed (as of 23APR24):
+    // - make supported orientation assertions more intuitive - added comment blocks to aid in this
+    // - consider employing preprocessor #defs in favor of const - did so, with appropriate comments
+    // - add switch input to enable user reset and possibly intuitive calibration once implemented
+    // - add rotating char to corner to depict loop running cycle through: - \ | / 
+    // - figure out how to do a SW reset on the nRF52840 so Inclinometer can be forcibly reset
+    //   after a configuration event <-- made use of the WDT with a CRV of 0x01 = ~31uS
+    // - mute aural warning after _ seconds
+    // - consider having single short button press when running to 'cage' orientation (i.e.
+    //   applying axial offsets, if practical, given an accelerometer-only employment) 
+    //   Actually implemented via WDT reset
+    // - nRF52840 WDT implementation is pretty underwhelming - likely by conservative design.
+    //   Once started, can't pause it, can't reconfigure until reset, pretty much locked down
+    //   once started.  As such only using it for software reset purposes in this app.
+    //
+  // 23Apr24 Sketch Stats on Xiao nRF52840 Sense Target (Arduino Core (not-MBed core...)): 
+    //  Sketch uses 84088 bytes (10%) of program storage space. Maximum is 811008 bytes.
+    //  Global variables use 9248 bytes (3%) of dynamic memory, leaving 228320 bytes for local variables. 
+    //  Maximum is 237568 bytes.
+    //
+
   // ########################################################################################
 
-// XIAO BLE SENSE INCLINOMETER PREPROCESSOR DIRECTIVES ######################################
-
-  #define _debug  // uncomment this line to enable serial debug
-  //#define _debug_smooth  // uncomment this line to enable serial debug in the smoothAttitude() proc
-
+// XIAO nRF52840 BLE SENSE INCLINOMETER PREPROCESSOR DIRECTIVES #############################
 
   #define BOARD_NAME                  "Seeed Xiao nRF52840 BLE Sense"
 
+  // debug #defs
+    //#define _debug  // uncomment this line to enable serial debug
+    //#define _debug_smooth  // uncomment this line to enable serial debug in the smoothAttitude() proc
+
   // digital io assignments for LEDs and Aural Warning Device
 
-  // if mbed core is being used - larger fw core, a bit slower, and has altered IO port ids
-  // #define _io_GLed                 11
-  // #define _io_OLed                 10
-  // #define _io_RLed                 9
-  // #define _io_WHorn                8
-  // #define _io_UsrSw                7
-  
-  // if arduino core being used - smaller core and faster
-  #define _io_GLed                    10
-  #define _io_OLed                    9
-  #define _io_RLed                    8
-  #define _io_WHorn                   7
-  #define _io_UsrSw                   6
-  
-  // states
-  #define led_On                      0
-  #define led_Off                     1
-  #define wHorn_On                    0
-  #define wHorn_Off                   1
+    // if mbed core is being used - larger fw core, a bit slower, and has altered IO port ids
+      // #define _io_GLed             11
+      // #define _io_OLed             10
+      // #define _io_RLed             9
+      // #define _io_WHorn            8
+      // #define _io_UsrSw            7
+      
+    // if arduino core being used - smaller core and faster
+      #define _io_GLed                10
+      #define _io_OLed                9
+      #define _io_RLed                8
+      #define _io_WHorn               7
+      #define _io_UsrSw               6
+    
+  // digital state assignments
+    #define _do_led_On                0
+    #define _do_led_Off               1
+    #define _do_wHorn_On              0
+    #define _do_wHorn_Off             1
 
   // horn mute timer in ms
-  #define _wHornActivePeriod          50
+    #define _wHornActivePeriod        50
 
   // for readability
-  #define _gLedOff                    digitalWrite(_io_GLed,led_Off)
-  #define _gLedOn                     digitalWrite(_io_GLed,led_On)
-  #define _oLedOff                    digitalWrite(_io_OLed,led_Off)
-  #define _oLedOn                     digitalWrite(_io_OLed,led_On)
-  #define _rLedOff                    digitalWrite(_io_RLed,led_Off)
-  #define _rLedOn                     digitalWrite(_io_RLed,led_On)
-  #define _wHornOff                   digitalWrite(_io_WHorn,wHorn_Off)
-  #define _wHornOn                    digitalWrite(_io_WHorn,wHorn_On)
+    #define _gLedOff                  digitalWrite(_io_GLed,_do_led_Off)
+    #define _gLedOn                   digitalWrite(_io_GLed,_do_led_On)
 
-  #define _switchReleased             (digitalRead(_io_UsrSw))
-  #define _switchPressed              (!_switchReleased)
+    #define _oLedOff                  digitalWrite(_io_OLed,_do_led_Off)
+    #define _oLedOn                   digitalWrite(_io_OLed,_do_led_On)
+
+    #define _rLedOff                  digitalWrite(_io_RLed,_do_led_Off)
+    #define _rLedOn                   digitalWrite(_io_RLed,_do_led_On)
+
+    #define _wHornOff                 digitalWrite(_io_WHorn,_do_wHorn_Off)
+    #define _wHornOn                  digitalWrite(_io_WHorn,_do_wHorn_On)
+
+    #define _switchReleased           (digitalRead(_io_UsrSw))
+    #define _switchPressed            (!_switchReleased)
 
   // normalizing accelerometer values per guidance: 
-  // https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino
-  // given raw is -1.x|1.x, 'normalized' to 0|2047  
-  // normalized = (raw * multiplier) + offset
-  #define _accelNormOffset            1024
-  #define _accelNormMulti             1023
+    // https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino
+    // given raw is -1.x|1.x, 'normalized' to 0|2047  
+    // normalized = (raw * multiplier) + offset
+    #define _accelNormOffset          1024
+    #define _accelNormMulti           1023
 
   // max/min 'normalized' values - from -1.0|1.0 map'd to 0|2047 - a -1G-1G range
-  #define  _accNormMin                0
-  #define  _accNormMax                (_accelNormOffset + _accelNormMulti)
+    #define  _accNormMin              0
+    #define  _accNormMax              (_accelNormOffset + _accelNormMulti)
 
   // config affirmation delays
-  #define _splashDly                  1000
-  #define _imuDly                     0
-  #define _lfsDly                     0
-  #define _cfgDly                     0
-  #define _initDly                    0
-  #define _dispDly                    0
-  #define _ioDly                      0
-  #define _commsDly                   0
+    #define _splashDly                1000
+    #define _imuDly                   0
+    #define _lfsDly                   0
+    #define _cfgDly                   0
+    #define _initDly                  0
+    #define _dispDly                  0
+    #define _ioDly                    0
+    #define _commsDly                 0
 
-  // common _ui Window element ##############################################################
-
-  #define _uiColor_BlkOnWhi           0
-  #define _uiColor_WhtOnBlk           1
-  
-  // experimental _ui display controls ######################################################
-
-  #define _splashOffset1X
-  #define _splashOffset2X
-    
   // _ui_Data Window Display Elements #######################################################
 
-    // font for labels/data/symbols/etc
+   // colors for labels/data/symbols/etc
+    #define _uiColor_BlkOnWhi         0
+    #define _uiColor_WhtOnBlk         1
+
+   // font for labels/data/symbols/etc
     #define _ui_DataFont              u8g2_font_10x20_te
 
-    // top half is for data display
+   // top half is for data display
     #define _ui_DataWinX              0
     #define _ui_DataWinY              0
     #define _ui_DataWinW              128
     #define _ui_DataWinH              16
 
-    // labels
+   // labels
     #define _ui_PitchLblTxtOffsetX    0
     #define _ui_PitchLblTxtOffsetY    14
 
     #define _ui_RollLblTxtOffsetX     65
     #define _ui_RollLblTxtOffsetY     14
 
-    // pitch text offsets in data win
+   // pitch text offsets in data win
     #define _ui_PitchDataTxtOffsetX   13
     #define _ui_PitchDataTxtOffsetY   14
 
-    // roll text offsets in data win
+   // roll text offsets in data win
     #define _ui_RollDataTxtOffsetX    78
     #define _ui_RollDataTxtOffsetY    14
 
+   // degree symbol offsets in data win
     #define _ui_DataDegSymOffsetX     -7
     #define _ui_DataDegSymOffsetY     -1
 
-    // ######################################################################################
-
-  // _ui_Status Window Display Elements #####################################################
-
-    // font for status/prompts/etc.
+   // font for status/prompts/etc.
     #define _ui_StatFont              u8g2_font_6x12_te
 
-    // bottom half is for icons/status/prompts/etc
+   // bottom half is for icons/status/prompts/etc
     #define _ui_StatWinX              0
     #define _ui_StatWinY              17
     #define _ui_StatWinW              128
     #define _ui_StatWinH              16
 
-    // heartbeat text offsets in stat win
+   // heartbeat text offsets in stat win
     #define _ui_HBStatTxtOffsetX      0
     #define _ui_HBStatTxtOffsetY      12
 
-    // heartbeat text offsets in stat win
+   // heartbeat text offsets in stat win
     #define _ui_PromptTxtOffsetX      9
     #define _ui_PromptTxtOffsetY      12
 
-    // period in mS to force a device reset if the switch is continuously held
+   // period in mS to force a device reset if the ui switch is continuously held
     #define _swResetPeriod            2000
 
-    // avg attitude over last _attAvgIterations+1 (0-based) sensed values
+   // avg attitude over last _attAvgIterations+1 (0-based) sensed values
     #define _attAvgIterations         4 
-    // values >9 impute a latency given loop rate of 20-30Hz (w/ no loop delay)
-    // values <9 impute a context where noisy accelerometer values are used
+    // given loop rate of 20-30Hz (w/ no loop delay), values of ~9 are appropriate - >9 impute a latency given loop rate
+    // values <9 impute a context where noisy accelerometer values are likely/possible
+    // It's appropriate to target <= ~1/2 of the frequency of the main loop - i.e. 4+1 iterations at a 10hz rate works.
+    // That way attitude calcs remain responsive (< 0.5S latent) and benefits from averaging/smoothing...
 
+   // for use to cast char array variables - 64 is very like excessive...
     #define _tmpStringLen             64
+
+    // ######################################################################################
+
+  // default attitude caution/warning parameters ############################################
+
+   // setup: determine/set these after the sensor is installed in the vehicle and tested for pitch and roll stability
+
+   // pitch nose down
+    #define _att_DefPosPitCaut        70
+    #define _att_DefPosPitWarn        75
+
+   // pitch nose up
+    #define _att_DefNegPitCaut        -70
+    #define _att_DefNegPitWarn        -75
+
+   // roll right
+    #define _att_DefPosRollCaut       55
+    #define _att_DefPosRollWarn       60
+
+   // roll left
+    #define _att_DefNegRollCaut       -55
+    #define _att_DefNegRollWarn       -60
+
+    // ######################################################################################
 
   // #Includes ##############################################################################
 
     #include "LSM6DS3.h"    // for IMU
     #include <U8g2lib.h>    // for B&W OLED Display
 
-  // ########################################################################################
+   // ########################################################################################
 
-// XIAO BLE SENSE INCLINOMETER VARIABLE INSTANTIATION #######################################
+// XIAO nRF52840 BLE SENSE INCLINOMETER VARIABLE INSTANTIATION ##############################
 
   // Create a instance of class LSM6DS3 (the 6Dof IMU)
   LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
@@ -314,22 +330,22 @@
   // int pDir = 1;    // pitch inversion flag: 1 for non-inverted or -1 to invert
   // int rDir = 1;    //  roll inversion flag: 1 for non-inverted or -1 to invert
 
-  // setup: determine/set these after the sensor is installed in the vehicle and tested for pitch and roll stability
-  int pTipFwdAngCaut = 70;
-  int pTipFwdAngWarn = 75;
+  // defaults are instantiated here - to be possibly modified by config file if/when implemented
+  int pTipFwdAngCaut = _att_DefPosPitCaut;
+  int pTipFwdAngWarn = _att_DefPosPitWarn;
 
-  int pTipAftAngCaut = -70;
-  int pTipAftAngWarn = -75;
+  int pTipAftAngCaut = _att_DefNegPitCaut;
+  int pTipAftAngWarn = _att_DefNegPitWarn;
 
-  int rTipRtAngCaut = 55;
-  int rTipRtAngWarn = 60;
+  int rTipRtAngCaut = _att_DefPosRollCaut;
+  int rTipRtAngWarn = _att_DefPosRollWarn;
 
-  int rTipLtAngCaut = -55;
-  int rTipLtAngWarn = -60;
+  int rTipLtAngCaut = _att_DefNegRollCaut;
+  int rTipLtAngWarn = _att_DefNegRollWarn;
 
   // ########################################################################################
 
-// XIAO BLE SENSE INCLINOMETER APP PROCS ####################################################
+// XIAO nRF52840 BLE SENSE INCLINOMETER APP PROCS ###########################################
   void resetInclinometer() {
     //Configure & start WDT with shortest period, to force an 'immediate' reset via SW
     #ifdef _debug
@@ -826,10 +842,10 @@
     }
 
   void deactivateWarnHorn() {
-      wHornStart = 0;
-      wHornStartPitch = 0;                                        
-      wHornStartRoll = 0;                                        // record the attitude 
-      _wHornOff;
+      wHornStart = 0;         // null the timer
+      wHornStartPitch = 0;    // null attitude                                         
+      wHornStartRoll = 0;     // null attitude   
+      _wHornOff;              // gag the noise maker
     }
 
   void activateWarnHorn() {
@@ -839,7 +855,7 @@
 
         if ((wHornStartPitch == pitch) and (wHornStartRoll == roll)) {  // test to see if attitude hasn't changed
           _wHornOff;                                                  // if attitude is static, cease blaring
-         } else {                                                     // so, attained did change since it was when the horn started, so need to record new attitude and restart the timeout testing
+         } else {                                                     // so, attitude did change since it was when the horn started, so need to record new attitude and restart the timeout testing
             wHornStartPitch = pitch;                                  // record new attitude
             wHornStartRoll = roll;
             _wHornOn;                                                 // reassert warning
@@ -923,7 +939,7 @@
     }
   // ########################################################################################
 
-// XIAO BLE SENSE INCLINOMETER APP ##########################################################
+// XIAO nRF52840 BLE SENSE INCLINOMETER APP #################################################
   void setup() {
 
     timeStart = millis(); // catch init start time - ~49 day rollover
@@ -980,7 +996,7 @@
     showStatus();
     pollUI();
 
-    delay(63);   // ~10hz rate
+    delay(63);   // impute a ~10hz rate  (non-delayed loop running at ~27hz/37mS)
 
     }
 
