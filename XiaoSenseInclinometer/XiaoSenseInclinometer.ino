@@ -1,17 +1,21 @@
 // XIAO nRF52840 BLE SENSE INCLINOMETER PREAMBLE ############################################
   /*****************************************************************************/
-    //  XiaoSenseInclinometer.ino
-    //  Hardware:      Seeed Studio Xiao nRF52840 BLE Sense
-    //	Arduino IDE:   Arduino-2.3.2
-    //	Author:	       Tod Wulff (a.k.a. MegaHurtz/~MHz)
-    //	Date: 	       23 April 2024
-    //	Version:       v1.0
+  //  XiaoSenseInclinometer.ino
     //
-    //  Description:  Coded for use with a Seeed Studio Xiao nRF52840 BLE Sense
-    //                Added 128x32 i2c oled display for pitch/roll (FPV use)
-    //                Added LEDs for driver visual queue of approaching tip over
-    //                Added switched output for driving an aural warning device
-    //                See video:  https://youtu.be/2NaQaHJ9XEI
+    //  Repository:     https://github.com/TodWulff/-MHz-Roll-o-Meter
+    //
+    //  Hardware:       Seeed Studio Xiao nRF52840 BLE Sense SBC
+    //                  128*32 OLED Display with SSD1306 driver
+    //                  Active buzzer with active low digital input to trigger 
+    //                  3ea Discrete LEDs with current 220ohm limiting resistors
+    //                  1ea Discrete PB switch for user interaction
+    //
+    //	Arduino IDE:    Arduino-2.3.x
+    //	Author:         Tod Wulff (a.k.a. MegaHurtz/~MHz)
+    //	Date:           23 April 2024
+    //	Version:        v1.0
+    //
+    //  Description:   See video:  https://youtu.be/2NaQaHJ9XEI
     //
     //  Inspiration/References:
     //  Scale Built RC's Roll-o-Meter - Thanks brother!
@@ -40,7 +44,7 @@
     //  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
     //
     /*******************************************************************************/
-    //
+
   // Possible enhancements to consider / todos (as of 23APR24): 
     // - Add cute startup splash screen w/ static, or moving, graphics
     // - 'Flashing' LEDs in caution and/or warning contexts - currently 'works' so might not fix it
@@ -63,11 +67,11 @@
     //   a CRV of 1 to implement a reset in ~31uS - that ISR is the existing resetInclinometer();
     //   function which is indeed using the WDT w/ CRV of 1.  But, user initiated reset is working, so...
     // - revisit the possible use of a file system for persistent config storage - low roi at this time
-    //
+  
   // 22APR24: No longer considering a calibration effrort as I perceive that the roi is simply not worth
     //  all that would be needed to implement same.  Nix'd all config and LittleFS content.  May revisit
     //  doing so in the future - tbd...  For now, just hard-coded via #defined init of related variables.
-    //
+  
   // Completed (as of 23APR24):
     // - make supported orientation assertions more intuitive - added comment blocks to aid in this
     // - consider employing preprocessor #defs in favor of const - did so, with appropriate comments
@@ -82,18 +86,17 @@
     // - nRF52840 WDT implementation is pretty underwhelming - likely by conservative design.
     //   Once started, can't pause it, can't reconfigure until reset, pretty much locked down
     //   once started.  As such only using it for software reset purposes in this app.
-    //
-  // 23Apr24 Sketch Stats on Xiao nRF52840 Sense Target (Arduino Core (not-MBed core...)): 
+  
+  // 23Apr24 Sketch Stats on Xiao nRF52840 Sense Target (Arduino Core (not MBed core...)): 
     //  Sketch uses 84088 bytes (10%) of program storage space. Maximum is 811008 bytes.
     //  Global variables use 9248 bytes (3%) of dynamic memory, leaving 228320 bytes for local variables. 
     //  Maximum is 237568 bytes.
-    //
 
   // ########################################################################################
 
 // XIAO nRF52840 BLE SENSE INCLINOMETER PREPROCESSOR DIRECTIVES #############################
 
-  #define BOARD_NAME                  "Seeed Xiao nRF52840 BLE Sense"
+  #define _BOARD_NAME                  "Seeed Xiao nRF52840 BLE Sense"
 
   // debug #defs
     //#define _debug  // uncomment this line to enable serial debug
@@ -231,21 +234,33 @@
 
    // setup: determine/set these after the sensor is installed in the vehicle and tested for pitch and roll stability
 
-   // pitch nose down
-    #define _att_DefPosPitCaut        70
-    #define _att_DefPosPitWarn        75
+   // pitch nose down (these are pretty well tuned for the 7.5# Capra with 60/40 forward weight bias)
+    #define _att_DefPosPitCaut        (70)
+    #define _att_DefPosPitWarn        (75)
 
    // pitch nose up
-    #define _att_DefNegPitCaut        -70
-    #define _att_DefNegPitWarn        -75
+    #define _att_DefNegPitCaut        (-1 * _att_DefPosPitCaut)
+    #define _att_DefNegPitWarn        (-1 * _att_DefPosPitWarn)
 
-   // roll right
-    #define _att_DefPosRollCaut       55
-    #define _att_DefPosRollWarn       60
+   // roll right (adjusted by -5 as part of fine tuning post-install testing)
+    #define _att_DefPosRollCaut       (55 - 5)
+    #define _att_DefPosRollWarn       (60 - 5)
 
    // roll left
-    #define _att_DefNegRollCaut       -55
-    #define _att_DefNegRollWarn       -60
+    #define _att_DefNegRollCaut       (-1 * _att_DefPosRollCaut)
+    #define _att_DefNegRollWarn       (-1 * _att_DefPosRollWarn)
+
+   // modify roll limits based on sensed pitch attitude 
+    // seems to have lower roll over thresholds with pitch attitude deviations from level
+    // decrease roll limits by a value of 1/10th of absolute pitch attitude
+    // this is a bit of a test as part of fine tuning post-install testing
+    #define _p2r_CautMod           ((abs(pitch)/10) * ((roll >= 0) ? -1 : 1))   //ternary ftw
+    #define _p2r_WarnMod           _p2r_CautMod
+
+   // modify pitch limits based on sensed roll attitude
+    // may not be needed, hence 0, but coding for same, to ease future implementation of same
+    #define _r2p_CautMod           0   // ((abs(roll)/10) * ((pitch >= 0) ? -1 : 1))   //ternary ftw
+    #define _r2p_WarnMod           _r2p_CautMod
 
     // ######################################################################################
 
@@ -346,30 +361,94 @@
   // ########################################################################################
 
 // XIAO nRF52840 BLE SENSE INCLINOMETER APP PROCS ###########################################
-  void resetInclinometer() {
-    //Configure & start WDT with shortest period, to force an 'immediate' reset via SW
-    #ifdef _debug
-      Serial.println("\nResetting Processor via WDT");
-     #endif
-    NRF_WDT->CONFIG         = 0x01;     // Configure WDT to run when CPU is asleep
-    NRF_WDT->CRV            = 1;        // load CRV - with 1 - should reset at Start + ~30uS (32.768KHz based)
-    NRF_WDT->RREN           = 0x01;     // Enable the RR[0] reload register
-    NRF_WDT->TASKS_START    = 1;        // Triggers the Start WDT - not stoppable hereafter , until post-reset...      
+  #ifdef _debug                     // if debug asserted
+    void initComms() {              // init serial comms
+
+      // instantiate console comms
+      Serial.begin(115200);
+      while (!Serial && millis() < 5000);
+      delay(1000);
+
+      // clear the arduino ide serial console
+      //Serial.print(char(27)); Serial.print("[2J");
+      //Serial.print("\x1B" "[2J");
+      Serial.print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"); // really, my eyes just went zenith and gimbal locked there. smdh...
+
+      // emit app vitals to console
+      Serial.println("\nSerial Comms Up");
+      Serial.println("\n~MHz Roll-o-Meter ...");
+      //Serial.print("Xiao Inclinometer with LittleFS running on ");
+      Serial.print("Xiao Inclinometer running on ");
+      Serial.println(_BOARD_NAME);
+
+      clearDisplay();
+      u8g2.setFont(_ui_DataFont);
+      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Good Comms");
+      u8g2.sendBuffer();
+
+      delay(_commsDly);
+
+    #endif
+
+  void startDisplay() {             // init display via library proc
+
+    if (!u8g2.begin()) {  // Display Start Failed
+
+      #ifdef _debug
+        Serial.println("\nDisplay Start Failed - exiting app...");
+        #endif
+      return;
+
+    } else {  // Display Start Succeeded
+
+      #ifdef _debug
+        Serial.println("\nDisplay Started");
+        #endif
+      clearDisplay();
+
+      // suppress - splash will be enuf... 
+      //      u8g2.setFont(_ui_DataFont);
+      //      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Display OK");
+      //      u8g2.sendBuffer();
+
+      }
+
+    //    delay(_dispDly);
+
     }
 
-  void showSplash() {
+  void setupIO() {                  // init the GPIO and related hardware connected thereto
+
+    // setup IO states, enabling each after being set
+    _gLedOff;
+    pinMode(_io_GLed , OUTPUT);
+
+    _oLedOff;
+    pinMode(_io_OLed , OUTPUT);
+
+    _rLedOff;
+    pinMode(_io_RLed , OUTPUT);
+
+    deactivateWarnHorn();
+    pinMode(_io_WHorn , OUTPUT);
+
+    // open sw needs pullup
+    pinMode(_io_UsrSw, INPUT_PULLUP);
+
+    #ifdef _debug
+      Serial.println("\nIO configured");
+      #endif
 
     clearDisplay();
     u8g2.setFont(_ui_DataFont);
-    u8g2.drawStr(0,15,"   ~MHz");
-    u8g2.drawStr(0,30,"Roll-o-Meter");
+    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"IO is Setup");
     u8g2.sendBuffer();
 
-    delay(_splashDly);
+    delay(_ioDly);
 
     }
 
-  void startIMU() {
+  void startIMU() {                 // start the imu sensor
 
     clearDisplay();
     u8g2.setFont(_ui_DataFont);
@@ -407,7 +486,118 @@
 
     }
 
-  void displayPitchRoll() {
+  void resetInclinometer() {        // use WDT to implement a SWR
+    //Configure & start WDT with shortest period, to force an 'immediate' reset via SW
+    #ifdef _debug
+      Serial.println("\nResetting Processor via WDT");
+     #endif
+    NRF_WDT->CONFIG         = 0x01;     // Configure WDT to run when CPU is asleep
+    NRF_WDT->CRV            = 1;        // load CRV - with 1 - should reset at Start + ~30uS (32.768KHz based)
+    NRF_WDT->RREN           = 0x01;     // Enable the RR[0] reload register
+    NRF_WDT->TASKS_START    = 1;        // Triggers the Start WDT - not stoppable hereafter , until post-reset...      
+    }
+
+  void showSplash() {               // for ui goodness
+
+    clearDisplay();
+    u8g2.setFont(_ui_DataFont);
+    u8g2.drawStr(0,15,"   ~MHz");
+    u8g2.drawStr(0,30,"Roll-o-Meter");
+    u8g2.sendBuffer();
+
+    delay(_splashDly);
+
+    }
+
+  void shortBeep() {                // aural ui element
+
+    delay(100);
+    activateWarnHorn();
+    delay(100);
+    deactivateWarnHorn();
+
+    }
+
+  void longBeep() {                 // aural ui element
+
+    delay(750);
+    activateWarnHorn();
+    delay(750);
+    deactivateWarnHorn();
+
+    }
+
+  void doubleBeep() {               // aural ui element
+
+    delay(100);
+    activateWarnHorn();
+    delay(100);
+    deactivateWarnHorn();
+
+    delay(100);
+
+    activateWarnHorn();
+    delay(100);
+    deactivateWarnHorn();
+
+    }
+
+  void errorBeep() {                // aural ui element
+    longBeep();
+    delay(250);
+    longBeep();
+    delay(250);
+    longBeep();
+    }
+
+  void tripleBeep() {               // aural ui element
+    shortBeep();
+    doubleBeep();
+    }
+
+  void clearDisplay() {             // helper proc to simply clear the glass
+    u8g2.clearBuffer();					// clear the internal memory
+    u8g2.sendBuffer();
+    }
+  
+  void pollUI() {                   // poll hmi to see if user input needs processing
+
+    if (_switchPressed) {
+
+      _gLedOn;
+      shortBeep();
+
+      #ifdef _debug
+        Serial.println("\nSwitch Triggered");
+       #endif
+
+      strcpy(statusStr, "Hold for Reset ...");
+      showStatus();
+
+      int pressTime = millis();
+
+      while (_switchPressed) {
+        //dwell until released, counting to see how long held and, if held more than 5 seconds, reset the inclinometer
+
+        if ((millis() - pressTime) > _swResetPeriod) {
+          strcpy(statusStr, "... Now Release");
+          showStatus();
+          while (_switchPressed) {
+            // wait until released
+            }
+          resetInclinometer();
+          }
+
+        }
+      //createConfig();
+      doubleBeep();
+      _gLedOff;
+
+      }
+
+    }
+
+  void displayPitchRoll() {         // displays sensed attitude on data portion of display
 
     // uses globals pitch, roll
 
@@ -440,7 +630,93 @@
 
     }
 
-  void assertOrientationStates() {
+  void showStatus() {               // displays hearbeat and status on status portion of display
+
+    if (!heartBeat[hbIdx]) {  // check hbIdx to see if we're at the end of heartbeat string
+      hbIdx = 0;              // and reset to beginning of string if so
+      }
+
+    msgStr[0] = heartBeat[hbIdx++];
+    msgStr[1] = 0;
+
+    // draw black box vs. clearing the whole display - helps to prevent flickering of Data Window Contents
+    u8g2.setDrawColor(_uiColor_BlkOnWhi);
+    u8g2.drawBox(_ui_StatWinX,_ui_StatWinY,_ui_StatWinW,_ui_StatWinH);
+    u8g2.setDrawColor(_uiColor_WhtOnBlk);
+
+    // draw the heart beat and status text
+    u8g2.setFont(_ui_StatFont);
+    u8g2.drawStr(_ui_StatWinX+_ui_HBStatTxtOffsetX,_ui_StatWinY+_ui_HBStatTxtOffsetY,msgStr);     // heartbeat
+    u8g2.drawStr(_ui_StatWinX+_ui_PromptTxtOffsetX,_ui_StatWinY+_ui_PromptTxtOffsetY,statusStr);  // status texp
+
+    // transfer display memory to display
+    u8g2.sendBuffer();
+    }
+    
+  void updateOrientation() {	      // sense accelerations and do match to derive pitch/roll attitudes
+
+    #ifdef _debug
+      Serial.print("\nupdateOrientation(): ");
+      #endif
+
+    // init vars for angle calculations
+    int xAng = 0;
+    int yAng = 0;
+    int zAng = 0;
+
+    // get current accelerometer values on each axis
+    double xAccRaw = myIMU.readFloatAccelX();
+    double yAccRaw = myIMU.readFloatAccelY();
+    double zAccRaw = myIMU.readFloatAccelZ();
+
+    // apply axial accelerometer scaler and offset for maths
+    int xAccNrm = (xAccRaw*_accelNormMulti) + _accelNormOffset;
+    int yAccNrm = (yAccRaw*_accelNormMulti) + _accelNormOffset;
+    int zAccNrm = (zAccRaw*_accelNormMulti) + _accelNormOffset;
+
+    // convert to range of -90 to +90 degrees, or +90 to -90 degrees if inverted orientation
+    if (bInv < 0) {
+      xAng = map(xAccNrm, _accNormMin, _accNormMax, 90, -90);
+      yAng = map(yAccNrm, _accNormMin, _accNormMax, 90, -90);
+      zAng = map(zAccNrm, _accNormMin, _accNormMax, 90, -90);
+      } else {
+      xAng = map(xAccNrm, _accNormMin, _accNormMax, -90, 90);
+      yAng = map(yAccNrm, _accNormMin, _accNormMax, -90, 90);
+      zAng = map(zAccNrm, _accNormMin, _accNormMax, -90, 90);
+      }
+
+    // convert radians to degrees, inverting if so needed
+    lastPitch = (RAD_TO_DEG * (atan2(-xAng, -zAng) + PI)) * pDir;
+    lastRoll = (RAD_TO_DEG * (atan2(-yAng, -zAng) + PI)) * rDir;
+
+    // correct per orientation flags
+    if (pDir < 0) {
+      lastPitch = lastPitch + 360;
+      }
+
+    if (rDir < 0) {
+      lastRoll = lastRoll + 360;
+      }
+
+    // convert left lastRoll and forward lastPitch to negative degrees
+    if (lastPitch > 180) {
+      lastPitch = lastPitch - 360;
+      }
+
+    if (lastRoll > 180) {
+      lastRoll = lastRoll - 360;
+      }
+
+    #ifdef _debug
+      sprintf(tmpStr,"lP: %d   lR: %d", lastPitch, lastRoll);
+      Serial.println(tmpStr);
+      #endif
+
+    smoothAttitude();
+
+    }
+
+  void assertOrientationStates() {  // test sensed pitch and roll and set flags
 
     // uses globals pitch, roll
 
@@ -454,16 +730,18 @@
     int rWarn = 0;
 
     // check pitch attitude and set caution/warning flags
-    if (pitch >= pTipFwdAngWarn || pitch <= pTipAftAngWarn) {
+    // adapted with cross-axial modifier
+    if (pitch >= pTipFwdAngWarn + _r2p_WarnMod || pitch <= pTipAftAngWarn + _r2p_WarnMod) {
         pWarn = 1;
-      } else if (pitch >= pTipFwdAngCaut || pitch <= pTipAftAngCaut) {
+      } else if (pitch >= pTipFwdAngCaut + _r2p_CautMod || pitch <= pTipAftAngCaut + _r2p_CautMod) {
         pCaut = 1;
       } 
 
-    // check roll attitude and set caution/warning flags 
-    if (roll >= rTipRtAngWarn || roll <= rTipLtAngWarn) {
+    // check roll attitude and set caution/warning flags
+    // adapted with cross-axial modifier
+    if (roll >= rTipRtAngWarn + _p2r_WarnMod || roll <= rTipLtAngWarn + _p2r_WarnMod) {
         rWarn = 1;
-      } else if (roll >= rTipRtAngCaut || roll <= rTipLtAngCaut) {
+      } else if (roll >= rTipRtAngCaut + _p2r_CautMod || roll <= rTipLtAngCaut + _p2r_CautMod ) {
         rCaut = 1;
       } 
 
@@ -562,321 +840,37 @@
       }
     }
 
-  void shortBeep() {
-
-    delay(100);
-    activateWarnHorn();
-    delay(100);
-    deactivateWarnHorn();
-
-    }
-
-  void longBeep() {
-
-    delay(750);
-    activateWarnHorn();
-    delay(750);
-    deactivateWarnHorn();
-
-    }
-
-  void doubleBeep() {
-
-    delay(100);
-    activateWarnHorn();
-    delay(100);
-    deactivateWarnHorn();
-
-    delay(100);
-
-    activateWarnHorn();
-    delay(100);
-    deactivateWarnHorn();
-
-    }
-
-  void errorBeep() {
-    longBeep();
-    delay(250);
-    longBeep();
-    delay(250);
-    longBeep();
-    }
-
-  void tripleBeep() {
-    shortBeep();
-    doubleBeep();
-    }
-
-  void startDisplay() {
-
-    if (!u8g2.begin()) {  // Display Start Failed
-
-      #ifdef _debug
-        Serial.println("\nDisplay Start Failed - exiting app...");
-        #endif
-      return;
-
-    } else {  // Display Start Succeeded
-
-      #ifdef _debug
-        Serial.println("\nDisplay Started");
-        #endif
-      clearDisplay();
-
-      // suppress - splash will be enuf... 
-      //      u8g2.setFont(_ui_DataFont);
-      //      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Display OK");
-      //      u8g2.sendBuffer();
-
-      }
-
-    //    delay(_dispDly);
-
-    }
-
-  void setupIO() {
-
-    // setup IO states, enabling each after being set
-    _gLedOff;
-    pinMode(_io_GLed , OUTPUT);
-
-    _oLedOff;
-    pinMode(_io_OLed , OUTPUT);
-
-    _rLedOff;
-    pinMode(_io_RLed , OUTPUT);
-
-    deactivateWarnHorn();
-    pinMode(_io_WHorn , OUTPUT);
-
-    // open sw needs pullup
-    pinMode(_io_UsrSw, INPUT_PULLUP);
-
-    #ifdef _debug
-      Serial.println("\nIO configured");
-      #endif
-      
-    clearDisplay();
-    u8g2.setFont(_ui_DataFont);
-    u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"IO is Setup");
-    u8g2.sendBuffer();
-
-    delay(_ioDly);
-
-    }
-
-  #ifdef _debug
-    void initComms() {
-
-      // instantiate console comms
-      Serial.begin(115200);
-      while (!Serial && millis() < 5000);
-      delay(1000);
-
-      // clear the arduino ide serial console
-      //Serial.print(char(27)); Serial.print("[2J");
-      //Serial.print("\x1B" "[2J");
-      Serial.print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"); // really, my eyes just went zenith and gimbal locked there. smdh...
-
-      // emit app vitals to console
-      Serial.println("\nSerial Comms Up");
-      Serial.println("\n~MHz Roll-o-Meter ...");
-      //Serial.print("Xiao Inclinometer with LittleFS running on ");
-      Serial.print("Xiao Inclinometer running on ");
-      Serial.println(BOARD_NAME);
-
-      clearDisplay();
-      u8g2.setFont(_ui_DataFont);
-      u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Good Comms");
-      u8g2.sendBuffer();
-
-      delay(_commsDly);
-
-      }
-    void setSSD1306VcomDeselect(uint8_t v) {
-      // value from 0 to 7, higher values more brighter
-      u8x8_cad_StartTransfer(u8g2.getU8x8());
-      u8x8_cad_SendCmd(u8g2.getU8x8(), 0x0db);
-      u8x8_cad_SendArg(u8g2.getU8x8(), v << 4);
-      u8x8_cad_EndTransfer(u8g2.getU8x8());
-      }
-
-    void setSSD1306PreChargePeriod(uint8_t p1, uint8_t p2) {	
-      // p1: 1..15, higher values, more darker, however almost no difference with 3 or more
-      // p2: 1..15, higher values, more brighter
-      u8x8_cad_StartTransfer(u8g2.getU8x8());
-      u8x8_cad_SendCmd(u8g2.getU8x8(), 0x0d9);
-      u8x8_cad_SendArg(u8g2.getU8x8(), (p2 << 4) | p1 );
-      u8x8_cad_EndTransfer(u8g2.getU8x8());
-      }
-
-    #endif
-  void clearDisplay() {
-    u8g2.clearBuffer();					// clear the internal memory
-    u8g2.sendBuffer();
-    }
-  
-
-  void showStatus() {
-
-    if (!heartBeat[hbIdx]) {  // check hbIdx to see if we're at the end of heartbeat string
-      hbIdx = 0;              // and reset to beginning of string if so
-      }
-
-    msgStr[0] = heartBeat[hbIdx++];
-    msgStr[1] = 0;
-
-    // draw black box vs. clearing the whole display - helps to prevent flickering of Data Window Contents
-    u8g2.setDrawColor(_uiColor_BlkOnWhi);
-    u8g2.drawBox(_ui_StatWinX,_ui_StatWinY,_ui_StatWinW,_ui_StatWinH);
-    u8g2.setDrawColor(_uiColor_WhtOnBlk);
-
-    // draw the heart beat and status text
-    u8g2.setFont(_ui_StatFont);
-    u8g2.drawStr(_ui_StatWinX+_ui_HBStatTxtOffsetX,_ui_StatWinY+_ui_HBStatTxtOffsetY,msgStr);     // heartbeat
-    u8g2.drawStr(_ui_StatWinX+_ui_PromptTxtOffsetX,_ui_StatWinY+_ui_PromptTxtOffsetY,statusStr);  // status texp
-
-    // transfer display memory to display
-    u8g2.sendBuffer();
-    }
-
-  void updateOrientation() {	
-
-    #ifdef _debug
-      Serial.print("\nupdateOrientation(): ");
-      #endif
-
-    // init vars for angle calculations
-    int xAng = 0;
-    int yAng = 0;
-    int zAng = 0;
-
-    // get current accelerometer values on each axis
-    double xAccRaw = myIMU.readFloatAccelX();
-    double yAccRaw = myIMU.readFloatAccelY();
-    double zAccRaw = myIMU.readFloatAccelZ();
-
-    // apply axial accelerometer scaler and offset for maths
-    int xAccNrm = (xAccRaw*_accelNormMulti) + _accelNormOffset;
-    int yAccNrm = (yAccRaw*_accelNormMulti) + _accelNormOffset;
-    int zAccNrm = (zAccRaw*_accelNormMulti) + _accelNormOffset;
-
-    // convert to range of -90 to +90 degrees, or +90 to -90 degrees if inverted orientation
-    if (bInv < 0) {
-      xAng = map(xAccNrm, _accNormMin, _accNormMax, 90, -90);
-      yAng = map(yAccNrm, _accNormMin, _accNormMax, 90, -90);
-      zAng = map(zAccNrm, _accNormMin, _accNormMax, 90, -90);
-      } else {
-      xAng = map(xAccNrm, _accNormMin, _accNormMax, -90, 90);
-      yAng = map(yAccNrm, _accNormMin, _accNormMax, -90, 90);
-      zAng = map(zAccNrm, _accNormMin, _accNormMax, -90, 90);
-      }
-
-    // convert radians to degrees, inverting if so needed
-    lastPitch = (RAD_TO_DEG * (atan2(-xAng, -zAng) + PI)) * pDir;
-    lastRoll = (RAD_TO_DEG * (atan2(-yAng, -zAng) + PI)) * rDir;
-
-    // correct per orientation flags
-    if (pDir < 0) {
-      lastPitch = lastPitch + 360;
-      }
-
-    if (rDir < 0) {
-      lastRoll = lastRoll + 360;
-      }
-
-    // convert left lastRoll and forward lastPitch to negative degrees
-    if (lastPitch > 180) {
-      lastPitch = lastPitch - 360;
-      }
-
-    if (lastRoll > 180) {
-      lastRoll = lastRoll - 360;
-      }
-
-    #ifdef _debug
-      sprintf(tmpStr,"lP: %d   lR: %d", lastPitch, lastRoll);
-      Serial.println(tmpStr);
-      #endif
-
-    smoothAttitude();
-
-    }
-
-  void pollUI() {
-
-    if (_switchPressed) {
-
-      _gLedOn;
-      shortBeep();
-
-      #ifdef _debug
-        Serial.println("\nSwitch Triggered");
-       #endif
-
-      strcpy(statusStr, "Hold for Reset ...");
-      showStatus();
-
-      int pressTime = millis();
-
-      while (_switchPressed) {
-        //dwell until released, counting to see how long held and, if held more than 5 seconds, reset the inclinometer
-
-        if ((millis() - pressTime) > _swResetPeriod) {
-          strcpy(statusStr, "... Now Release");
-          showStatus();
-          while (_switchPressed) {
-            // wait until released
-            }
-          resetInclinometer();
+  void activateWarnHorn() {         // serves to also squelch the horn when timeout attained, if no attitude changes
+
+    if (wHornStart) {                                         // if we already started the horn, then
+      if ((millis() - wHornStart) >= _wHornActivePeriod) {    // test to see if we are timed out on the horn
+        if ((wHornStartPitch == pitch) and (wHornStartRoll == roll)) {  // test to see if attitude hasn't changed
+          _wHornOff;                                            // if attitude is static, cease blaring
+         } else {                                             // so, attitude did change since it was when the horn started, so need to record new attitude and restart the timeout testing
+            wHornStartPitch = pitch;                            // record new pitch attitude for future conditionals
+            wHornStartRoll = roll;                              // record new roll attitude for future conditionals
+            _wHornOn;                                           // reassert warning
+            wHornStart = millis();                              // reset horn timeout start
           }
-
+       } else {                                               // if we're not timed out on the horn, but it was started, then 
+                      // do nothing
         }
-      //createConfig();
-      doubleBeep();
-      _gLedOff;
-
+     } else {                                                  // so this is a new start of the horn, so 
+      wHornStart = millis();                                    // record the start time
+      wHornStartPitch = pitch;                                  // record the entry pitch angle
+      wHornStartRoll = roll;                                    // record the entry roll angle 
+      _wHornOn;                                                 // and sing loudly
       }
-
     }
 
-  void deactivateWarnHorn() {
+  void deactivateWarnHorn() {       // mute the horn and null related variables
       wHornStart = 0;         // null the timer
       wHornStartPitch = 0;    // null attitude                                         
       wHornStartRoll = 0;     // null attitude   
       _wHornOff;              // gag the noise maker
     }
 
-  void activateWarnHorn() {
-
-    if (wHornStart) {                                                 // if we already started the horn, then
-      if ((millis() - wHornStart) >= _wHornActivePeriod) {            // test to see if we are timed out on the horn
-
-        if ((wHornStartPitch == pitch) and (wHornStartRoll == roll)) {  // test to see if attitude hasn't changed
-          _wHornOff;                                                  // if attitude is static, cease blaring
-         } else {                                                     // so, attitude did change since it was when the horn started, so need to record new attitude and restart the timeout testing
-            wHornStartPitch = pitch;                                  // record new attitude
-            wHornStartRoll = roll;
-            _wHornOn;                                                 // reassert warning
-            wHornStart = millis();                                    // reset horn timeout start
-
-          }
-       } else {                                                       // if we're not timed out on the horn, but it was started, then do nothing
-        // wHornStartPitch = pitch;  // record new attitude
-        // wHornStartRoll = roll;
-        // _wHornOn;                 // reassert warning
-        //wHornStart = millis();    // reset horn timeout start
-        }
-     } else {                                                         // so this is a new start of the horn, so 
-        wHornStart = millis();                                        // start the timer
-        wHornStartPitch = pitch;                                      // record the entry pitch angle
-        wHornStartRoll = roll;                                        // record the entry roll angle 
-        _wHornOn;                                                     // and sing loudly
-       }
-    }
-
-  void smoothAttitude() {  // smooth by averaging over last _attAvgIterations
+  void smoothAttitude() {           // smooth by averaging over last _attAvgIterations
 
     // zero out the accumulators on each run instance
     pitchAccum = 0;
@@ -942,7 +936,9 @@
 // XIAO nRF52840 BLE SENSE INCLINOMETER APP #################################################
   void setup() {
 
-    timeStart = millis(); // catch init start time - ~49 day rollover
+    #ifdef _debug
+      timeStart = millis(); // catch init start time - ~49 day rollover
+     #endif
 
     startDisplay();
 
@@ -955,9 +951,8 @@
     startIMU();
     showSplash();
 
-    timeEnd = millis() - timeStart; // catch init end time
-
     #ifdef _debug
+      timeEnd = millis() - timeStart; // catch init end time
       Serial.print("\nInit complete in (ms) ");
       sprintf(tmpStr,"%d", timeEnd);
       Serial.println(tmpStr);
@@ -967,15 +962,8 @@
     // Initialize attitude smoothing array
     for (int i = 0; i < _attAvgIterations; i++) { pitchArray[i]=0; rollArray[i]=0; }
 
-    //clearDisplay();
-    //u8g2.setFont(_ui_DataFont);
-    //u8g2.drawStr(_ui_DataWinX+_ui_PitchLblTxtOffsetX,_ui_DataWinY+_ui_PitchLblTxtOffsetY,"Starting ~MHz");
-    //u8g2.sendBuffer();
-
-    //strcpy(statusStr, "Roll-o-Meter :)");
-    //showStatus();
-
     tripleBeep();
+
     //delay(_initDly);
 
     clearDisplay();
@@ -996,7 +984,7 @@
     showStatus();
     pollUI();
 
-    delay(63);   // impute a ~10hz rate  (non-delayed loop running at ~27hz/37mS)
+    delay(63);   // imputes a ~10hz rate  (non-delayed loop running at ~27hz/37mS)
 
     }
 
