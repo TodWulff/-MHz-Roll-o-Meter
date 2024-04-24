@@ -17,7 +17,7 @@ Date:           **23 April 2024**
 Version:        **v1.0**
 
 Description:   
-- See video for early implementation: ![~MHz Roll-o-Meter](https://youtu.be/2NaQaHJ9XEI)
+- See video for early implementation: [~MHz Roll-o-Meter](https://youtu.be/2NaQaHJ9XEI)
 
 Inspiration/References:
 - Scale Built RC's Roll-o-Meter - Thanks, brother! - https://www.youtube.com/watch?v=PfeZpKERkO8
