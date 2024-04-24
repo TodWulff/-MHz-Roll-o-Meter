@@ -28,7 +28,7 @@ Inspiration/References:
 - https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino  <-- this
 - plus a bunch of others for the OLED display (using u8g2 lib)
 
-Adopted code to be easily navigable using Arduino IDE's code-folding: ![XiaoInclinometer Code Folding](https://i.imgur.com/TLFXAx1.png)
+Adopted code to be easily navigable using Arduino IDE's code-folding: ![XiaoInclinometer Code Folding](https://i.imgur.com/yPNq5u6.png)
 
 I'm not a dev, but rather an old-arse script kiddie hack, so my Arduino/C++ coding style is not mature and, as evidenced in the code, malleable.  It is what it is.
 
