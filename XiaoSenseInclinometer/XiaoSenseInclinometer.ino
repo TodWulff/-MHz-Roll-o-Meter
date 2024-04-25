@@ -95,16 +95,17 @@
   // ########################################################################################
 
 // XIAO nRF52840 BLE SENSE INCLINOMETER PREPROCESSOR DIRECTIVES #############################
-
-  #define _BOARD_NAME                  "Seeed Xiao nRF52840 BLE Sense"
-
   // debug #defs
+
     //#define _debug  // uncomment this line to enable serial debug
     //#define _debug_smooth  // uncomment this line to enable serial debug in the smoothAttitude() proc
+    
+    #define _BOARD_NAME                  "Seeed Xiao nRF52840 BLE Sense"
 
   // digital io assignments for LEDs and Aural Warning Device
 
     // if mbed core is being used - larger fw core, a bit slower, and has altered IO port ids
+
       // #define _io_GLed             11
       // #define _io_OLed             10
       // #define _io_RLed             9
@@ -112,6 +113,7 @@
       // #define _io_UsrSw            7
       
     // if arduino core being used - smaller core and faster
+
       #define _io_GLed                10
       #define _io_OLed                9
       #define _io_RLed                8
@@ -119,15 +121,14 @@
       #define _io_UsrSw               6
     
   // digital state assignments
+
     #define _do_led_On                0
     #define _do_led_Off               1
     #define _do_wHorn_On              0
     #define _do_wHorn_Off             1
 
-  // horn mute timer in ms
-    #define _wHornActivePeriod        50
-
   // for readability
+
     #define _gLedOff                  digitalWrite(_io_GLed,_do_led_Off)
     #define _gLedOn                   digitalWrite(_io_GLed,_do_led_On)
 
@@ -144,6 +145,7 @@
     #define _switchPressed            (!_switchReleased)
 
   // normalizing accelerometer values per guidance: 
+
     // https://adam-meyer.com/arduino/sensing-orientation-with-the-adxl335-arduino
     // given raw is -1.x|1.x, 'normalized' to 0|2047  
     // normalized = (raw * multiplier) + offset
@@ -151,10 +153,12 @@
     #define _accelNormMulti           1023
 
   // max/min 'normalized' values - from -1.0|1.0 map'd to 0|2047 - a -1G-1G range
+
     #define  _accNormMin              0
     #define  _accNormMax              (_accelNormOffset + _accelNormMulti)
 
   // config affirmation delays
+
     #define _splashDly                1000
     #define _imuDly                   0
     #define _lfsDly                   0
@@ -167,19 +171,23 @@
   // _ui_Data Window Display Elements #######################################################
 
    // colors for labels/data/symbols/etc
+
     #define _uiColor_BlkOnWhi         0
     #define _uiColor_WhtOnBlk         1
 
    // font for labels/data/symbols/etc
+
     #define _ui_DataFont              u8g2_font_10x20_te
 
    // top half is for data display
+
     #define _ui_DataWinX              0
     #define _ui_DataWinY              0
     #define _ui_DataWinW              128
     #define _ui_DataWinH              16
 
    // labels
+
     #define _ui_PitchLblTxtOffsetX    0
     #define _ui_PitchLblTxtOffsetY    14
 
@@ -187,82 +195,119 @@
     #define _ui_RollLblTxtOffsetY     14
 
    // pitch text offsets in data win
+
     #define _ui_PitchDataTxtOffsetX   13
     #define _ui_PitchDataTxtOffsetY   14
 
    // roll text offsets in data win
+
     #define _ui_RollDataTxtOffsetX    78
     #define _ui_RollDataTxtOffsetY    14
 
    // degree symbol offsets in data win
+
     #define _ui_DataDegSymOffsetX     -7
     #define _ui_DataDegSymOffsetY     -1
 
    // font for status/prompts/etc.
+
     #define _ui_StatFont              u8g2_font_6x12_te
 
    // bottom half is for icons/status/prompts/etc
+
     #define _ui_StatWinX              0
     #define _ui_StatWinY              17
     #define _ui_StatWinW              128
     #define _ui_StatWinH              16
 
    // heartbeat text offsets in stat win
+
     #define _ui_HBStatTxtOffsetX      0
     #define _ui_HBStatTxtOffsetY      12
 
-   // heartbeat text offsets in stat win
+   // status/prompt text offsets in stat win
+
     #define _ui_PromptTxtOffsetX      9
     #define _ui_PromptTxtOffsetY      12
 
    // period in mS to force a device reset if the ui switch is continuously held
+
     #define _swResetPeriod            2000
 
    // avg attitude over last _attAvgIterations+1 (0-based) sensed values
-    #define _attAvgIterations         4 
+
+    #define _attAvgIterations         9 
     // given loop rate of 20-30Hz (w/ no loop delay), values of ~9 are appropriate - >9 impute a latency given loop rate
     // values <9 impute a context where noisy accelerometer values are likely/possible
     // It's appropriate to target <= ~1/2 of the frequency of the main loop - i.e. 4+1 iterations at a 10hz rate works.
     // That way attitude calcs remain responsive (< 0.5S latent) and benefits from averaging/smoothing...
 
-   // for use to cast char array variables - 64 is very like excessive...
+   // for use to cast char array variables - 64 is very likely excessive...
+
     #define _tmpStringLen             64
 
     // ######################################################################################
 
-  // default attitude caution/warning parameters ############################################
+  // default attitude caution/warning parameter setup #######################################
 
-   // setup: determine/set these after the sensor is installed in the vehicle and tested for pitch and roll stability
+   // warning horn firing period - low values here are useful to keep warning horn from becoming an irritant vs useful
+    // fyi, loop rates will impace lowest practical value - higher rate = lower setting having a material effect
 
-   // pitch nose down (these are pretty well tuned for the 7.5# Capra with 60/40 forward weight bias)
-    #define _att_DefPosPitCaut        (70)
-    #define _att_DefPosPitWarn        (75)
+    #define _wHornActivePeriod        10
 
-   // pitch nose up
-    #define _att_DefNegPitCaut        (-1 * _att_DefPosPitCaut)
-    #define _att_DefNegPitWarn        (-1 * _att_DefPosPitWarn)
+   // caution and warning safety buffers: set these values based on user preference
 
-   // roll right (adjusted by -5 as part of fine tuning post-install testing)
-    #define _att_DefPosRollCaut       (55 - 5)
-    #define _att_DefPosRollWarn       (60 - 5)
+    #define _att_CautBuff             3       // degrees - buffer before warning buffer - 3 is min recommended - 5 is less risk
+    #define _att_WarnBuff             3       // degrees - buffer before tipover/rollover - 3 is min recommended - 5 is less risk
 
-   // roll left
-    #define _att_DefNegRollCaut       (-1 * _att_DefPosRollCaut)
-    #define _att_DefNegRollWarn       (-1 * _att_DefPosRollWarn)
+   // tip point setup: set after the sensor is installed in a fully configured vehicle and tested for pitch and roll tip points
 
-   // modify roll limits based on sensed pitch attitude 
+    // these are pretty well tuned for the 7.5# ~MHz Capra with 60/40 forward weight bias on 2.2 wheels/5.12 tires with 
+    // 2-stage foam inserts, with gravity-only compressed suspension (no winch tension) 
+    // was done on carpet and hardwood flooring
+
+    #define _att_PosPitTip            79      // degrees - set to last whole degree where a nose up tipover doesn't happen
+    #define _att_NegPitTip            -74     // degrees - set to last whole degree where a nose down tipover doesn't happen
+
+    // suspect following delta is due to lateral cg offset of motor/electronics in cabin, considering suspecsion droop
+    #define _att_PosRollTip           68      // degrees - set to last whole degree where a leaning-right rollover doesn't happen
+    #define _att_NegRollTip           -68     // degrees - set to last whole degree where a leaning-left rollover doesn't happen
+
+   // These default pitch/roll caution/warning points should not need to be altered as they derived from above
+    // nose up pitch
+      #define _att_DefPosPitCaut      (_att_PosPitTip - _att_WarnBuff - _att_CautBuff)
+      #define _att_DefPosPitWarn      (_att_PosPitTip - _att_WarnBuff)
+
+    // nose down pitch
+      #define _att_DefNegPitCaut      (_att_NegPitTip + _att_WarnBuff + _att_CautBuff)
+      #define _att_DefNegPitWarn      (_att_NegPitTip + _att_WarnBuff)
+
+    // right roll (adjusted by -5 as part of fine tuning & post-install testing)
+      #define _att_DefPosRollCaut     (_att_PosRollTip - _att_WarnBuff - _att_CautBuff)
+      #define _att_DefPosRollWarn     (_att_PosRollTip - _att_WarnBuff)
+
+    // left roll 
+      #define _att_DefNegRollCaut     (_att_NegRollTip + _att_WarnBuff + _att_CautBuff)
+      #define _att_DefNegRollWarn     (_att_NegRollTip + _att_WarnBuff)
+
+   // the following modifies limits based on sensed attitude - a wip...
+
     // seems to have lower roll over thresholds with pitch attitude deviations from level
     // decrease roll limits by a value of 1/10th of absolute pitch attitude
     // this is a bit of a test as part of fine tuning post-install testing
-    #define _p2r_CautMod           ((abs(pitch)/10) * ((roll >= 0) ? -1 : 1))   //ternary ftw
-    #define _p2r_WarnMod           _p2r_CautMod
 
-   // modify pitch limits based on sensed roll attitude
-    // may not be needed, hence 0, but coding for same, to ease future implementation of same
-    #define _r2p_CautMod           0   // ((abs(roll)/10) * ((pitch >= 0) ? -1 : 1))   //ternary ftw
-    #define _r2p_WarnMod           _r2p_CautMod
+    #define _p2r_CautMod              ((abs(pitch)/10) * ((roll >= 0) ? -1 : 1))   //ternary ftw
+    #define _p2r_WarnMod              _p2r_CautMod
 
-    // ######################################################################################
+    // modify pitch limits based on sensed roll attitude
+
+    // may not be needed, hence 0, but while my gray matter is engaged, coded for same, 
+    // to ease future implementation of same
+
+    #define _r2p_CautMod              0   // ((abs(roll)/10) * ((pitch >= 0) ? -1 : 1))   //ternary ftw
+    #define _r2p_WarnMod              _r2p_CautMod
+
+   // ######################################################################################
 
   // #Includes ##############################################################################
 
@@ -289,12 +334,11 @@
 
   int cWidth = 9;         // todo: set via query of u8g2 lib for specified font during setup
 
-  long timeStart = 0;
-  long timeNow = 0;
-  long timeEnd = 0;
-  long loopCnt = 0;
-  float loopRate = 0;
-
+  uint64_t timeStart = 0;
+  uint64_t timeNow = 0;
+  uint64_t timeEnd = 0;
+  uint64_t loopCnt = 0;
+  double loopRate = 0;
 
   // wHorn_Active_Period
   int wHornStart = 0;
@@ -303,7 +347,7 @@
  
   char heartBeat[] = "-\\|/";
   //char heartBeat[] = "-\\|~MHz|/";
-  //char heartBeat[] = "-\\|/ ~MHz Roll-o-Meter \\|/-";
+  //char heartBeat[] = "-\\|/ ~MHz -\\|/ Roll -\\|/ o -\\|/ Meter";
   int hbIdx = 0;
 
   int pitch = 0;
@@ -361,6 +405,7 @@
   // ########################################################################################
 
 // XIAO nRF52840 BLE SENSE INCLINOMETER APP PROCS ###########################################
+
   #ifdef _debug                     // if debug asserted
     void initComms() {              // init serial comms
 
@@ -487,6 +532,7 @@
     }
 
   void resetInclinometer() {        // use WDT to implement a SWR
+
     //Configure & start WDT with shortest period, to force an 'immediate' reset via SW
     #ifdef _debug
       Serial.println("\nResetting Processor via WDT");
@@ -494,7 +540,8 @@
     NRF_WDT->CONFIG         = 0x01;     // Configure WDT to run when CPU is asleep
     NRF_WDT->CRV            = 1;        // load CRV - with 1 - should reset at Start + ~30uS (32.768KHz based)
     NRF_WDT->RREN           = 0x01;     // Enable the RR[0] reload register
-    NRF_WDT->TASKS_START    = 1;        // Triggers the Start WDT - not stoppable hereafter , until post-reset...      
+    NRF_WDT->TASKS_START    = 1;        // Triggers the Start WDT - not stoppable hereafter , until post-reset...
+
     }
 
   void showSplash() {               // for ui goodness
@@ -543,21 +590,27 @@
     }
 
   void errorBeep() {                // aural ui element
+
     longBeep();
     delay(250);
     longBeep();
     delay(250);
     longBeep();
+
     }
 
   void tripleBeep() {               // aural ui element
+
     shortBeep();
     doubleBeep();
+
     }
 
   void clearDisplay() {             // helper proc to simply clear the glass
+
     u8g2.clearBuffer();					// clear the internal memory
     u8g2.sendBuffer();
+
     }
   
   void pollUI() {                   // poll hmi to see if user input needs processing
@@ -651,9 +704,10 @@
 
     // transfer display memory to display
     u8g2.sendBuffer();
+    
     }
     
-  void updateOrientation() {	      // sense accelerations and do match to derive pitch/roll attitudes
+  void updateOrientation() {	      // sense accelerations and do math to derive pitch/roll attitudes
 
     #ifdef _debug
       Serial.print("\nupdateOrientation(): ");
@@ -838,6 +892,7 @@
             }
         }
       }
+
     }
 
   void activateWarnHorn() {         // serves to also squelch the horn when timeout attained, if no attitude changes
@@ -861,13 +916,16 @@
       wHornStartRoll = roll;                                    // record the entry roll angle 
       _wHornOn;                                                 // and sing loudly
       }
+
     }
 
   void deactivateWarnHorn() {       // mute the horn and null related variables
+
       wHornStart = 0;         // null the timer
       wHornStartPitch = 0;    // null attitude                                         
       wHornStartRoll = 0;     // null attitude   
       _wHornOff;              // gag the noise maker
+
     }
 
   void smoothAttitude() {           // smooth by averaging over last _attAvgIterations
@@ -931,6 +989,7 @@
       #endif
 
     }
+
   // ########################################################################################
 
 // XIAO nRF52840 BLE SENSE INCLINOMETER APP #################################################
@@ -984,7 +1043,7 @@
     showStatus();
     pollUI();
 
-    delay(63);   // imputes a ~10hz rate  (non-delayed loop running at ~27hz/37mS)
+    //delay(63);   // imputes a ~10hz rate  (non-delayed loop running at ~27hz/37mS)
 
     }
 
