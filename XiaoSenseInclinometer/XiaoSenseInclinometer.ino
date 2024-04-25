@@ -99,7 +99,7 @@
 
     //#define _debug  // uncomment this line to enable serial debug
     //#define _debug_smooth  // uncomment this line to enable serial debug in the smoothAttitude() proc
-    
+
     #define _BOARD_NAME                  "Seeed Xiao nRF52840 BLE Sense"
 
   // digital io assignments for LEDs and Aural Warning Device
@@ -273,7 +273,7 @@
     #define _att_PosRollTip           68      // degrees - set to last whole degree where a leaning-right rollover doesn't happen
     #define _att_NegRollTip           -68     // degrees - set to last whole degree where a leaning-left rollover doesn't happen
 
-   // These default pitch/roll caution/warning points should not need to be altered as they derived from above
+   // These default pitch/roll caution/warning points should not need to be altered as they are derived from above
     // nose up pitch
       #define _att_DefPosPitCaut      (_att_PosPitTip - _att_WarnBuff - _att_CautBuff)
       #define _att_DefPosPitWarn      (_att_PosPitTip - _att_WarnBuff)
@@ -292,8 +292,8 @@
 
    // the following modifies limits based on sensed attitude - a wip...
 
-    // seems to have lower roll over thresholds with pitch attitude deviations from level
-    // decrease roll limits by a value of 1/10th of absolute pitch attitude
+    // This vehicle seems to have lower roll over thresholds with pitch attitude deviations from level
+    // As such, try to decrease roll limits by a value of 1/10th of absolute pitch attitude
     // this is a bit of a test as part of fine tuning post-install testing
 
     #define _p2r_CautMod              ((abs(pitch)/10) * ((roll >= 0) ? -1 : 1))   //ternary ftw
