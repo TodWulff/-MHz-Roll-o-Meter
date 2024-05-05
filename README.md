@@ -7,20 +7,23 @@ Hardware:
 - Active buzzer with active low digital input to trigger 
 - 3ea Discrete LEDs with 220 ohm current-limiting resistors
 - 1ea Discrete SPST Momentary PB switch for user interaction
+- DJI O3 HD Camera/VTX (if FPV'g, of course)
 
 Arduino IDE:    **Arduino-2.3.x**
 
 Author:         **Tod Wulff (a.k.a. MegaHurtz/~MHz)**
 
-Date:           **23 April 2024**
+Date:           **05 May 2024**
 
-Version:        **v1.0**
+Version:        **v1.1**
 
 Description:   
 - See video for early implementation: [~MHz Roll-o-Meter](https://youtu.be/2NaQaHJ9XEI)
+- Folded in an arming app, with slight modifications, to enable use of a single Xiao SBC for both the inclinometer and the arming of a DJI O3 HD Camera/VTX.  Simple #defs control using either or both of these on a given build.
 
 Inspiration/References:
 - Scale Built RC's Roll-o-Meter - Thanks, brother! - https://www.youtube.com/watch?v=PfeZpKERkO8
+- [ramiss's arduino_DJI_03_RC_ARM Sketch for arming the DJI O3 HD Camera/VTX](https://github.com/ramiss/arduino_DJI_03_RC_ARM)
 - https://wiki.seeedstudio.com/XIAO-BLE-Sense-IMU-Usage/
 - https://github.com/camerontech/inclinometer
 - https://forum.seeedstudio.com/t/xiao-sense-accelerometer-examples-and-low-power/270801
@@ -38,7 +41,7 @@ Also, I had considered using a Neopixel LED or a DotStar LED, but the implicatio
 
 If anyone wants to submit a PR that implements a config file, using LittleFS, or implements the use of Neopixel or DotStar LEDs, I'd welcome same.
 
-If this ends up being used by anyone besides myself, I would like to be made aware of same:  [MegaHurtz \<at\> engineer \<dot\> com](mailto://MegaHurtz\<at\>engineer\<dot\>com) or one can join and hang out on our AMA Club's Discord: [GLSA Discord Invite Link](https://discord.gg/EfWhUDrXxR)
+If this ends up being used by anyone besides myself, out of pure curiosity, I would like to be made aware of this:  [MegaHurtz \<at\> engineer \<dot\> com](mailto://MegaHurtz\<at\>engineer\<dot\>com) or one can join and hang out on our AMA Club's Discord: [GLSA Discord Invite Link](https://discord.gg/EfWhUDrXxR)
 
 Thanks.  Enjoy!
 
